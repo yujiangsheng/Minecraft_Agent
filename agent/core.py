@@ -351,11 +351,15 @@ class AgentCore:
         """获取需要告知 LLM 的近期失败列表"""
         failures = list(self.recent_failures)
         
-        # 如果位置卡住，追加提示
+        # 如果位置卡住，追加提示（优先建议跳跃脱困）
         if self._stuck_steps >= 3:
+            if self._stuck_steps >= 6:
+                hint = "请使用 jump + tower_up 向上脱困，或 tunnel 挖隧道离开"
+            else:
+                hint = "请先使用 jump 跳跃，再配合 move_to/explore 改变位置"
             failures.append({
                 "action": "position_stuck",
-                "reason": f"位置已连续 {self._stuck_steps} 步未变化，请使用 explore 或 move_to 改变位置"
+                "reason": f"位置已连续 {self._stuck_steps} 步未变化（可能掉入坑中），{hint}"
             })
         
         return failures
@@ -468,8 +472,8 @@ class AgentCore:
             actions = [{"action": "retreat", "args": {}}, {"action": "flee_from", "args": {}}]
             goal = "敌对威胁，紧急撤退"
         elif issue == "stuck_no_progress":
-            actions = [{"action": "explore", "args": {"speed": 5}}, {"action": "find_resource", "args": {"resource_type": "tree"}}]
-            goal = "位置卡住，积极探索新区域"
+            actions = [{"action": "jump", "args": {}}, {"action": "explore", "args": {"speed": 5}}, {"action": "tower_up", "args": {"height": 2}}]
+            goal = "位置卡住，跳跃脱困并探索新区域"
         elif issue == "no_tools":
             actions = [{"action": "gather_wood", "args": {}}, {"action": "craft_tool", "args": {"tool_type": "default:pick_wood"}}]
             goal = "没有工具，采集木材制作工具"

@@ -732,10 +732,62 @@ action_handlers["jump"] = function(params)
     return true, "jumped"
 end
 
+-- 向前跳跃（同时施加垂直 + 水平速度，用于脱坑/跨障碍）
+action_handlers["jump_forward"] = function(params)
+    local player = get_player()
+    if not player then return false, "no_player" end
+
+    local dir = player:get_look_dir()
+    dir.y = 0
+    if vector.length(dir) < 0.01 then
+        local angle = math.random() * 2 * math.pi
+        dir = vector.new(math.cos(angle), 0, math.sin(angle))
+    else
+        dir = vector.normalize(dir)
+    end
+
+    local h_speed = params.speed or 5
+    local v_speed = params.jump_height or 6
+    local vel = vector.multiply(dir, h_speed)
+    vel.y = v_speed
+    player:add_velocity(vel)
+    return true, "jump_forward"
+end
+
 -- 等待（原地停留指定时间）
 action_handlers["wait"] = function(params)
     -- 等待由 globalstep 计时完成，这里只返回成功
     return true, "waiting"
+end
+
+-- 组合动作（在同一 tick 内同时执行多个子动作）
+action_handlers["combo"] = function(params)
+    local player = get_player()
+    if not player then return false, "no_player" end
+
+    local sub_actions = params.actions
+    if not sub_actions or type(sub_actions) ~= "table" or #sub_actions == 0 then
+        return false, "no_sub_actions"
+    end
+
+    local results = {}
+    local all_ok = true
+    for i, sub in ipairs(sub_actions) do
+        local sub_type = sub.action or sub.type
+        if sub_type and action_handlers[sub_type] and sub_type ~= "combo" then
+            local ok, s, m = pcall(action_handlers[sub_type], sub.params or {})
+            if ok and s then
+                table.insert(results, sub_type .. ":ok")
+            else
+                table.insert(results, sub_type .. ":fail")
+                all_ok = false
+            end
+        end
+    end
+
+    local combo_name = params.combo_name or "unnamed_combo"
+    local summary = combo_name .. "=[" .. table.concat(results, "+") .. "]"
+    return all_ok, summary
 end
 
 -- 游泳（在水中向前移动）

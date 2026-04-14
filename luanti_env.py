@@ -21,6 +21,7 @@ Luanti 环境连接器 - Python <-> Luanti HTTP 桥接层
 """
 
 import json
+import random
 import threading
 import time
 from difflib import get_close_matches
@@ -138,6 +139,7 @@ class ActionTranslator:
         "explore":        {"action": "move", "params": {"speed": 4}},
         "move_to":        {"action": "move", "params": {}},
         "jump":           {"action": "jump", "params": {}},
+        "jump_forward":   {"action": "jump_forward", "params": {"speed": 5, "jump_height": 6}},
         "retreat":        {"action": "retreat", "params": {"speed": 6}},
         "flee_from":      {"action": "retreat", "params": {"speed": 8}},
         "swim":           {"action": "swim", "params": {}},
@@ -244,13 +246,13 @@ class ActionTranslator:
     # 所有 Lua handler 支持的原生动作名（用于二次兜底）
     LUA_HANDLERS = {
         "move", "dig", "place", "craft", "attack", "eat", "equip",
-        "look_around", "build_shelter", "retreat", "jump", "wait",
+        "look_around", "build_shelter", "retreat", "jump", "jump_forward", "wait",
         "swim", "find_resource", "deposit_item", "light_area",
         "sneak", "sprint", "look_at", "drop_item", "take_from_container",
         "use_node", "place_at", "dig_down", "dig_up", "tunnel",
         "bridge", "tower_up", "farm_plant", "farm_harvest", "smelt",
         "pickup_item", "check_recipe", "punch_node", "sort_inventory",
-        "set_hotbar",
+        "set_hotbar", "combo",
     }
 
     # 语义关键词 → 动作速查表（比 difflib 更精准）
@@ -480,6 +482,21 @@ class LuantiEnvironment:
         self._last_decide_time: float = 0
         self._fallback_counter: int = 0
 
+        # 卡住检测：记录最近位置，连续相同则判定为卡住
+        self._recent_positions: List[tuple] = []
+        self._stuck_counter: int = 0
+        # 脱困经验：记录尝试的随机动作组合及结果
+        self._escape_attempt: Optional[List[Dict[str, Any]]] = None
+        self._escape_position: Optional[tuple] = None
+        self._escape_callback: Optional[Callable] = None
+
+        # 组合动作发现：随机同时执行多个动作，追踪效果
+        self._combo_callback: Optional[Callable] = None
+        self._pending_combo: Optional[Dict[str, Any]] = None  # 正在追踪的 combo
+        self._combo_pre_state: Optional[Dict[str, Any]] = None  # combo 前的状态快照
+        self._combo_interval: int = 12  # 每隔多少步尝试一次随机 combo
+        self._learned_combos: Dict[str, Dict[str, Any]] = {}  # 已学到的 combo: name → info
+
         # 控制
         self._shutdown_flag = False
 
@@ -494,6 +511,163 @@ class LuantiEnvironment:
     def set_result_callback(self, callback: Callable[[Dict[str, Any]], None]):
         """设置动作结果回调"""
         self._result_callback = callback
+
+    def set_escape_callback(self, callback: Callable[[List[Dict[str, Any]], Dict[str, Any], bool], None]):
+        """设置脱困经验回调
+
+        callback(escape_actions, env_state, success):
+            escape_actions: 尝试的脱困动作列表
+            env_state: 当时的环境状态
+            success: 是否成功脱困
+        """
+        self._escape_callback = callback
+
+    def set_combo_callback(self, callback: Callable[[str, List[str], Dict[str, Any], Dict[str, Any], Dict[str, Any]], None]):
+        """设置组合动作发现回调
+
+        callback(combo_name, sub_actions, pre_state, post_state, effect):
+            combo_name: 自动生成的组合动作名
+            sub_actions: 子动作名列表
+            pre_state: 执行前环境状态
+            post_state: 执行后环境状态
+            effect: 效果摘要 dict
+        """
+        self._combo_callback = callback
+
+    # ── 组合动作发现系统 ──
+
+    # 可组合的原子动作池（适合同 tick 并行的动作）
+    _COMBO_POOL = [
+        {"action": "jump", "params": {}},
+        {"action": "jump_forward", "params": {"speed": 5, "jump_height": 6}},
+        {"action": "move", "params": {"speed": 5}},
+        {"action": "sprint", "params": {"enable": True}},
+        {"action": "dig", "params": {"target_type": "tree"}},
+        {"action": "dig", "params": {"target_type": "stone"}},
+        {"action": "attack", "params": {}},
+        {"action": "retreat", "params": {"speed": 5}},
+        {"action": "look_around", "params": {}},
+        {"action": "place", "params": {}},
+        {"action": "eat", "params": {}},
+        {"action": "pickup_item", "params": {}},
+        {"action": "sneak", "params": {"enable": True}},
+        {"action": "tower_up", "params": {"height": 1}},
+        {"action": "dig_down", "params": {}},
+        {"action": "bridge", "params": {"length": 2}},
+        {"action": "light_area", "params": {}},
+        {"action": "find_resource", "params": {"resource": "tree"}},
+    ]
+
+    # 动作名 → 中文简称（用于命名）
+    _ACTION_LABELS = {
+        "jump": "跳", "jump_forward": "跃进", "move": "移",
+        "sprint": "冲", "dig": "挖", "attack": "攻",
+        "retreat": "退", "look_around": "观", "place": "放",
+        "eat": "食", "pickup_item": "拾", "sneak": "潜",
+        "tower_up": "垫", "dig_down": "掘", "bridge": "桥",
+        "light_area": "灯", "find_resource": "搜",
+    }
+
+    def _generate_combo_name(self, sub_actions: List[Dict[str, Any]]) -> str:
+        """根据子动作自动生成组合动作名称"""
+        labels = []
+        for a in sub_actions:
+            name = a.get("action", "?")
+            label = self._ACTION_LABELS.get(name, name[:2])
+            # 用参数区分同名动作
+            params = a.get("params", {})
+            if name == "dig" and params.get("target_type"):
+                label += params["target_type"][:2]
+            labels.append(label)
+        return "combo_" + "_".join(labels)
+
+    def _generate_random_combo(self) -> Dict[str, Any]:
+        """生成一个随机组合动作（2-3个子动作同时执行）"""
+        n = random.randint(2, 3)
+        sub_actions = random.sample(self._COMBO_POOL, min(n, len(self._COMBO_POOL)))
+        combo_name = self._generate_combo_name(sub_actions)
+        return {
+            "action": "combo",
+            "params": {
+                "combo_name": combo_name,
+                "actions": sub_actions,
+            }
+        }
+
+    def _snapshot_key_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """提取环境状态中用于效果对比的关键字段"""
+        pos = state.get("position", {})
+        return {
+            "health": state.get("health", 20),
+            "hunger": state.get("hunger", 20),
+            "x": pos.get("x", 0), "y": pos.get("y", 0), "z": pos.get("z", 0),
+            "inventory_count": sum(v for v in state.get("inventory", {}).values() if isinstance(v, (int, float))),
+            "has_shelter": state.get("has_shelter", False),
+            "light_level": state.get("light_level", 0),
+            "nearby_entity_count": len(state.get("nearby_entities", [])),
+        }
+
+    def _compute_combo_effect(self, pre: Dict[str, Any], post: Dict[str, Any]) -> Dict[str, Any]:
+        """比较执行前后状态，计算效果"""
+        import math
+        dx = post["x"] - pre["x"]
+        dy = post["y"] - pre["y"]
+        dz = post["z"] - pre["z"]
+        dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+        return {
+            "health_delta": post["health"] - pre["health"],
+            "hunger_delta": post["hunger"] - pre["hunger"],
+            "distance_moved": round(dist, 1),
+            "height_delta": round(dy, 1),
+            "inventory_delta": post["inventory_count"] - pre["inventory_count"],
+            "is_positive": (
+                post["health"] >= pre["health"]
+                and dist > 0.5
+                and post["hunger"] >= pre["hunger"] - 1
+            ),
+        }
+
+    def _maybe_inject_combo(self, actions: List[Dict[str, Any]], state: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """在常规动作列表中随机注入一个 combo（按间隔控制频率）"""
+        # 如果已有 pending combo 等待评估，先跳过
+        if self._pending_combo:
+            # 评估上次 combo 的效果
+            if self.current_state:
+                post = self._snapshot_key_state(self.current_state)
+                effect = self._compute_combo_effect(self._combo_pre_state, post)
+                combo_info = self._pending_combo
+                combo_name = combo_info["params"]["combo_name"]
+                sub_names = [a["action"] for a in combo_info["params"]["actions"]]
+                logger.info(f"  组合动作 [{combo_name}] 效果: 移动={effect['distance_moved']}, "
+                            f"高度={effect['height_delta']}, HP={effect['health_delta']}, "
+                            f"积极={'是' if effect['is_positive'] else '否'}")
+
+                if self._combo_callback:
+                    try:
+                        self._combo_callback(combo_name, sub_names, self._combo_pre_state, post, effect)
+                    except Exception as e:
+                        logger.error(f"组合动作经验回调出错: {e}")
+
+                # 记录已学习的 combo
+                if combo_name not in self._learned_combos:
+                    self._learned_combos[combo_name] = {"sub_actions": sub_names, "tries": 0, "positive": 0}
+                self._learned_combos[combo_name]["tries"] += 1
+                if effect["is_positive"]:
+                    self._learned_combos[combo_name]["positive"] += 1
+
+            self._pending_combo = None
+            self._combo_pre_state = None
+
+        # 按间隔注入新 combo
+        if self.step_count % self._combo_interval == 0 and self.step_count > 0:
+            combo = self._generate_random_combo()
+            self._pending_combo = combo
+            self._combo_pre_state = self._snapshot_key_state(state)
+            combo_name = combo["params"]["combo_name"]
+            sub_names = [a["action"] for a in combo["params"]["actions"]]
+            logger.info(f"  尝试随机组合动作 [{combo_name}]: {sub_names}")
+            return [combo] + actions  # combo 在前，优先执行
+        return actions
 
     def _on_state_received(self, raw_state: Dict[str, Any]) -> List[Dict[str, Any]]:
         """处理收到的游戏状态，返回动作列表
@@ -550,15 +724,83 @@ class LuantiEnvironment:
         if actions:
             logger.info(f"  -> 返回 {len(actions)} 个 LLM 决策动作")
             self._fallback_counter = 0
-            return actions
+            return self._maybe_inject_combo(actions, self.current_state)
 
         # 没有缓存动作时也返回后备
-        return self._get_fallback_actions(self.current_state)
+        fallback = self._get_fallback_actions(self.current_state)
+        return self._maybe_inject_combo(fallback, self.current_state)
+
+    # ── 脱困用随机动作池 ──
+    _ESCAPE_ACTIONS = [
+        {"action": "jump_forward", "params": {"speed": 5, "jump_height": 6}},
+        {"action": "jump_forward", "params": {"speed": 7, "jump_height": 7}},
+        {"action": "jump", "params": {}},
+        {"action": "move", "params": {"speed": 6}},
+        {"action": "tower_up", "params": {"height": 2}},
+        {"action": "dig_down", "params": {}},
+        {"action": "dig_up", "params": {}},
+        {"action": "tunnel", "params": {"length": 3}},
+        {"action": "retreat", "params": {"speed": 5}},
+        {"action": "bridge", "params": {"length": 2}},
+        {"action": "sprint", "params": {"enable": True}},
+    ]
+
+    def _is_stuck(self, state: Dict[str, Any]) -> bool:
+        """检测是否卡在同一位置（掉坑、撞墙等）"""
+        pos = state.get("position", {})
+        if not pos:
+            return False
+        current = (round(pos.get("x", 0), 0), round(pos.get("y", 0), 0), round(pos.get("z", 0), 0))
+        self._recent_positions.append(current)
+        # 保留最近 6 个位置
+        if len(self._recent_positions) > 6:
+            self._recent_positions = self._recent_positions[-6:]
+
+        # 上次脱困尝试后位置变化了 → 脱困成功，记录经验
+        if self._escape_attempt and self._escape_position:
+            if current != self._escape_position:
+                logger.info(f"  脱困成功！动作: {[a['action'] for a in self._escape_attempt]}")
+                if self._escape_callback:
+                    try:
+                        self._escape_callback(self._escape_attempt, state, True)
+                    except Exception as e:
+                        logger.error(f"脱困经验回调出错: {e}")
+                self._escape_attempt = None
+                self._escape_position = None
+                self._stuck_counter = 0
+                self._recent_positions.clear()
+                return False
+            # 位置没变 → 上次脱困失败，回调记录
+            else:
+                logger.info(f"  脱困失败: {[a['action'] for a in self._escape_attempt]}")
+                if self._escape_callback:
+                    try:
+                        self._escape_callback(self._escape_attempt, state, False)
+                    except Exception as e:
+                        logger.error(f"脱困经验回调出错: {e}")
+                self._escape_attempt = None
+                # 不清 _escape_position，继续尝试
+
+        # 最近 4 步位置全部相同 → 卡住
+        if len(self._recent_positions) >= 4 and len(set(self._recent_positions[-4:])) == 1:
+            self._stuck_counter += 1
+            return True
+        self._stuck_counter = 0
+        self._escape_position = None
+        return False
+
+    def _random_escape_combo(self) -> List[Dict[str, Any]]:
+        """生成随机脱困动作组合（2-3个动作，必含 jump_forward）"""
+        combo = [{"action": "jump_forward", "params": {"speed": 5, "jump_height": 6}}]
+        n_extra = random.randint(1, 2)
+        combo.extend(random.sample(self._ESCAPE_ACTIONS, min(n_extra, len(self._ESCAPE_ACTIONS))))
+        return combo
 
     def _get_fallback_actions(self, state: Dict[str, Any]) -> List[Dict[str, Any]]:
         """根据当前游戏状态生成反应式后备动作（无需 LLM）
 
         优先级：
+        0. 卡住脱困（跳跃 + 移动 / 挖掘脚下方块）
         1. 紧急逃跑（低 HP + 附近有敌对实体）
         2. 进食（饥饿值低且有食物）
         3. 主动采集附近资源
@@ -570,6 +812,17 @@ class LuantiEnvironment:
         entities = state.get("nearby_entities", [])
         inventory = state.get("inventory", {})
         nearby_blocks = state.get("nearby_blocks", [])
+
+        # ── 最高优先级：卡住脱困（随机动作探索） ──
+        if self._is_stuck(state):
+            n = self._stuck_counter
+            combo = self._random_escape_combo()
+            logger.info(f"  检测到卡住 (连续 {n} 次)，随机脱困: {[a['action'] for a in combo]}")
+            # 记录本次尝试，下次 tick 检查是否成功
+            pos = state.get("position", {})
+            self._escape_attempt = combo
+            self._escape_position = (round(pos.get("x", 0), 0), round(pos.get("y", 0), 0), round(pos.get("z", 0), 0))
+            return combo
 
         # 紧急：低 HP + 附近有敌对实体 → 逃跑
         hostile_nearby = any(

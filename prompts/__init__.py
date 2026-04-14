@@ -374,7 +374,7 @@ class PromptTemplates:
 【关键规则】
   - nearby_blocks 里有 tree/wood 才能 gather_wood；有 stone/cobble 才能 mine_stone
   - 没有目标资源 → 先 find_resource 或 explore 移动
-  - position_stuck → 必须 explore 移动
+  - position_stuck → 必须 jump 跳跃脱困，再配合 explore/move_to 移动；如多次跳跃仍无法脱困，使用 tower_up 垫高或 tunnel 挖隧道离开
   - 参考 episodic_memories 和 semantic_rules 避免重蹈覆辙
   - 挖掘(dig/gather)后物品会掉落在地上，nearby_entities 中 type="dropped_item" 表示掉落物
   - 发现 dropped_item → 立刻用 pickup_item 拾取，否则物品会消失！

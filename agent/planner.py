@@ -215,6 +215,21 @@ class Planner:
                 ],
                 replan_trigger="dawn",
                 confidence=0.8
+            ),
+            "stuck_no_progress": Plan(
+                priority_issue=priority_issue,
+                selected_skill="escape_stuck",
+                goal="脱困",
+                subgoal="跳跃并移动到新位置",
+                expected_reward="恢复移动能力",
+                main_risk="可能消耗方块资源",
+                action_plan=[
+                    {"action": "jump", "args": {}},
+                    {"action": "move", "args": {"speed": 5}},
+                    {"action": "tower_up", "args": {"height": 2}}
+                ],
+                replan_trigger="position_changed",
+                confidence=0.7
             )
         }
         

@@ -487,6 +487,104 @@ class LuantiSession:
                 "message": f"学到有效模式: {pattern}"
             })
 
+    def on_escape_result(self, escape_actions: list, env_state: Dict[str, Any], success: bool):
+        """脱困经验回调 — 记录成功/失败的脱困动作到记忆系统"""
+        action_names = [a.get("action", "?") for a in escape_actions]
+        combo_str = " → ".join(action_names)
+
+        if success:
+            # 成功脱困 → 存储为情景记忆 + 语义规则
+            self.agent.memory.store_episode(
+                summary=f"脱困成功: {combo_str}",
+                lesson=f"卡住时使用 [{combo_str}] 可以脱困",
+                tags=["escape", "stuck", "success"] + action_names,
+                context=env_state,
+                outcome="success"
+            )
+            conditions = self.agent.memory._extract_conditions(env_state)
+            conditions.append("position_stuck")
+            self.agent.memory.store_rule(
+                rule=f"当卡住时，使用 [{combo_str}] 可以成功脱困",
+                confidence=0.8,
+                conditions=conditions
+            )
+            self.logger.info(f"[脱困经验] 记住成功脱困方法: {combo_str}")
+            self.dashboard.state.add_log({
+                "time": time.strftime("%H:%M:%S"),
+                "type": "learn",
+                "message": f"学到脱困方法: {combo_str}"
+            })
+        else:
+            # 失败 → 存储为失败经验，避免重复
+            self.agent.memory.store_episode(
+                summary=f"脱困失败: {combo_str}",
+                lesson=f"卡住时 [{combo_str}] 无效，需尝试其他方法",
+                tags=["escape", "stuck", "failure"] + action_names,
+                context=env_state,
+                outcome="failure"
+            )
+
+    def on_combo_result(self, combo_name: str, sub_actions: list,
+                        pre_state: dict, post_state: dict, effect: dict):
+        """组合动作发现回调 — 记录新动作的效果到记忆系统"""
+        combo_str = " + ".join(sub_actions)
+        is_positive = effect.get("is_positive", False)
+
+        # 构建效果描述
+        parts = []
+        if effect.get("distance_moved", 0) > 0.5:
+            parts.append(f"移动{effect['distance_moved']}格")
+        if effect.get("height_delta", 0) != 0:
+            parts.append(f"高度{'+'if effect['height_delta']>0 else ''}{effect['height_delta']}")
+        if effect.get("health_delta", 0) != 0:
+            parts.append(f"HP{'+'if effect['health_delta']>0 else ''}{effect['health_delta']}")
+        if effect.get("inventory_delta", 0) != 0:
+            parts.append(f"物品{'+'if effect['inventory_delta']>0 else ''}{effect['inventory_delta']}")
+        effect_desc = "、".join(parts) if parts else "无明显变化"
+
+        # 存储为情景记忆
+        self.agent.memory.store_episode(
+            summary=f"组合动作「{combo_name}」({combo_str}): {effect_desc}",
+            lesson=f"同时执行 [{combo_str}] 的效果: {effect_desc}。{'有效' if is_positive else '效果不佳'}",
+            tags=["combo", combo_name, "positive" if is_positive else "negative"] + sub_actions,
+            context=pre_state,
+            outcome="success" if is_positive else "neutral"
+        )
+
+        # 积极效果 → 存为语义规则 + 技能
+        if is_positive:
+            conditions = self.agent.memory._extract_conditions(pre_state)
+            self.agent.memory.store_rule(
+                rule=f"组合动作「{combo_name}」= 同时执行 [{combo_str}]，效果: {effect_desc}",
+                confidence=0.7,
+                conditions=conditions
+            )
+            # 存储为可复用的技能
+            skill_steps = [{"action": a, "args": {}} for a in sub_actions]
+            try:
+                self.agent.memory.store_skill(
+                    name=combo_name,
+                    purpose=f"同时执行 {combo_str}，产生效果: {effect_desc}",
+                    trigger_conditions=conditions[:3] if conditions else ["general"],
+                    steps=skill_steps,
+                    success_rate=0.7,
+                )
+            except Exception:
+                pass  # 重复 skill 名，忽略
+
+            self.logger.info(f"[新动作发现] 「{combo_name}」= {combo_str} → {effect_desc}")
+            self.dashboard.state.add_log({
+                "time": time.strftime("%H:%M:%S"),
+                "type": "learn",
+                "message": f"发现新动作「{combo_name}」: {combo_str} → {effect_desc}"
+            })
+        else:
+            self.dashboard.state.add_log({
+                "time": time.strftime("%H:%M:%S"),
+                "type": "action",
+                "message": f"尝试组合「{combo_name}」: {combo_str} → {effect_desc}"
+            })
+
     def _end_and_restart_episode(self):
         """结束当前 episode 并开始新的"""
         try:
@@ -551,11 +649,20 @@ class LuantiSession:
                     "message": "Luanti 已在运行，已切换到前台"
                 })
             else:
-                subprocess.Popen(["open", "-a", "Luanti"])
+                # 使用 --go 参数直接进入世界，避免停在主菜单
+                luanti_bin = "/Applications/Luanti.app/Contents/MacOS/luanti"
+                if os.path.exists(luanti_bin):
+                    subprocess.Popen(
+                        [luanti_bin, "--go", "--worldname", "wild world"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                else:
+                    subprocess.Popen(["open", "-a", "Luanti"])
                 self.dashboard.state.add_log({
                     "time": time.strftime("%H:%M:%S"),
                     "type": "system",
-                    "message": "Luanti 已启动，请进入 'wild world' 存档开始游戏"
+                    "message": "Luanti 已启动，正在自动进入 'wild world' 存档..."
                 })
         except Exception as e:
             self.logger.error(f"启动 Luanti 出错: {e}")
@@ -798,6 +905,8 @@ class LuantiSession:
         """将所有回调绑定到 env 和 dashboard"""
         self.env.set_decision_callback(self.on_decision)
         self.env.set_result_callback(self.on_result)
+        self.env.set_escape_callback(self.on_escape_result)
+        self.env.set_combo_callback(self.on_combo_result)
         self.dashboard.set_shutdown_callback(self.do_shutdown)
         self.dashboard.set_launch_callback(self.do_launch)
         self.dashboard.set_evolve_callback(self.do_evolve)
