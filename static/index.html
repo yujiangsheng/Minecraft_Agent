@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Luanti 智能体控制面板</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --border:   #2d3148;
+    --text:     #e0e0e8;
+    --text-dim: #8888a0;
+    --accent:   #6c8cff;
+    --green:    #4cdf8b;
+    --red:      #ff6b6b;
+    --orange:   #ffaa44;
+    --yellow:   #f0e060;
+    --purple:   #b48eff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── 顶栏 ── */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; font-weight: 600; color: var(--accent); }
+  header .meta {
+    display: flex; gap: 16px; align-items: center; font-size: 12px; color: var(--text-dim);
+  }
+  .status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px;
+  }
+  .status-dot.on  { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.off { background: var(--red); }
+  .status-dot.wait { background: var(--orange); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .hdr-btn {
+    padding: 6px 14px; border: none; border-radius: 5px; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: opacity .2s;
+  }
+  .hdr-btn:hover { opacity: .85; }
+  .hdr-btn.red   { background: var(--red); color: #fff; }
+  .hdr-btn.blue  { background: var(--accent); color: #fff; }
+  .hdr-btn.green { background: var(--green); color: #111; }
+  .hdr-btn.dim   { background: var(--border); color: var(--text-dim); }
+
+  /* ── 主布局 ── */
+  .container {
+    display: grid;
+    grid-template-columns: 280px 1fr 260px;
+    grid-template-rows: auto auto 1fr;
+    gap: 10px;
+    padding: 10px 16px;
+    height: calc(100vh - 50px);
+  }
+
+  /* ── 面板通用 ── */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-title {
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; flex-shrink: 0;
+  }
+
+  /* ── 左侧：状态面板 ── */
+  .sidebar { grid-row: 1 / 4; overflow-y: auto; }
+  .stat-section { margin-bottom: 14px; }
+  .stat-section h3 {
+    font-size: 10px; color: var(--text-dim); text-transform: uppercase;
+    letter-spacing: 1px; margin-bottom: 6px;
+  }
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; font-size: 12px;
+  }
+  .stat-label { color: var(--text-dim); }
+  .stat-value { font-weight: 600; }
+  .stat-value.good   { color: var(--green); }
+  .stat-value.warn   { color: var(--orange); }
+  .stat-value.danger { color: var(--red); }
+
+  .bar-container {
+    width: 100%; height: 5px; background: var(--border);
+    border-radius: 3px; margin-top: 3px; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 3px; transition: width .5s ease, background .3s;
+  }
+
+  .inv-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 4px; }
+  .inv-tag {
+    background: var(--border); color: var(--text); font-size: 10px;
+    padding: 1px 7px; border-radius: 3px;
+  }
+
+  /* ── 中间上方：任务面板 ── */
+  .task-panel { grid-column: 2; grid-row: 1; }
+  .task-form { display: flex; gap: 6px; margin-bottom: 8px; }
+  .task-panel input[type="text"] {
+    flex: 1; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 7px 10px; color: var(--text);
+    font-size: 13px; font-family: inherit; outline: none;
+  }
+  .task-panel input[type="text"]:focus { border-color: var(--accent); }
+  .task-panel input[type="text"]::placeholder { color: var(--text-dim); }
+
+  /* ── 动作面板 ── */
+  .action-palette { grid-column: 2; grid-row: 2; min-height: 0; }
+  .act-categories { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .act-cat-btn {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 3px 10px; border-radius: 12px; font-size: 10px; cursor: pointer;
+    transition: all .2s;
+  }
+  .act-cat-btn:hover, .act-cat-btn.active { border-color: var(--accent); color: var(--accent); }
+  .act-grid {
+    display: flex; flex-wrap: wrap; gap: 4px; max-height: 90px; overflow-y: auto;
+    margin-bottom: 8px;
+  }
+  .act-btn {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer;
+    transition: all .15s; white-space: nowrap;
+  }
+  .act-btn:hover { border-color: var(--accent); background: rgba(108,140,255,.1); }
+  .act-btn .cost { font-size: 9px; color: var(--orange); margin-left: 3px; }
+  .act-btn .cost.regen { color: var(--green); }
+  .act-queue {
+    display: flex; gap: 4px; align-items: center; flex-wrap: wrap;
+    min-height: 30px; padding: 6px 8px; background: var(--bg);
+    border-radius: 5px; border: 1px dashed var(--border);
+    margin-bottom: 6px;
+  }
+  .act-queue-tag {
+    display: flex; align-items: center; gap: 3px;
+    background: var(--border); color: var(--text); font-size: 11px;
+    padding: 2px 8px; border-radius: 3px;
+  }
+  .act-queue-tag .remove {
+    cursor: pointer; color: var(--red); font-size: 13px; margin-left: 2px;
+    line-height: 1;
+  }
+  .act-queue-tag .remove:hover { color: #fff; }
+  .act-queue-empty { color: var(--text-dim); font-size: 11px; }
+  .act-ctrl-row { display: flex; gap: 6px; align-items: center; }
+  .act-ctrl-row .stamina-cost {
+    font-size: 11px; color: var(--orange); margin-left: auto;
+  }
+
+  .btn {
+    padding: 7px 14px; border: none; border-radius: 5px; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: opacity .2s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary   { background: var(--accent); color: #fff; }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-green     { background: var(--green); color: #111; }
+  .btn-purple    { background: var(--purple); color: #fff; }
+
+  .current-task {
+    font-size: 12px; padding: 6px 10px; background: var(--bg);
+    border-radius: 5px; border-left: 3px solid var(--accent);
+  }
+  .current-task.empty { border-left-color: var(--text-dim); color: var(--text-dim); }
+
+  .preset-tasks { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .preset-btn {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text-dim);
+    padding: 3px 10px; border-radius: 12px; font-size: 11px; cursor: pointer;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── 中间下方：日志面板 ── */
+  .log-panel { grid-column: 2; grid-row: 3; min-height: 0; }
+  .log-list { flex: 1; overflow-y: auto; font-size: 11px; line-height: 1.7; }
+  .log-entry { padding: 2px 6px; border-radius: 3px; display: flex; gap: 6px; }
+  .log-entry:hover { background: rgba(255,255,255,.03); }
+  .log-time { color: var(--text-dim); flex-shrink: 0; width: 56px; }
+  .log-type {
+    flex-shrink: 0; width: 60px; font-weight: 600; text-transform: uppercase;
+    font-size: 9px; line-height: 1.7; letter-spacing: .5px;
+  }
+  .log-type.decision  { color: var(--accent); }
+  .log-type.action    { color: var(--green); }
+  .log-type.error     { color: var(--red); }
+  .log-type.reflect   { color: var(--orange); }
+  .log-type.user_task { color: var(--yellow); }
+  .log-type.system    { color: var(--text-dim); }
+  .log-type.evolve    { color: var(--purple); }
+  .log-msg { color: var(--text); word-break: break-all; }
+
+  /* ── 右侧：控制与演化面板 ── */
+  .right-panel { grid-column: 3; grid-row: 1 / 4; overflow-y: auto; gap: 10px; }
+
+  /* 连接面板 */
+  .conn-box {
+    padding: 12px; background: var(--bg); border-radius: 6px;
+    text-align: center; margin-bottom: 12px;
+  }
+  .conn-box .big-icon { font-size: 36px; margin-bottom: 8px; }
+  .conn-box .conn-label {
+    font-size: 12px; color: var(--text-dim); margin-bottom: 8px;
+  }
+  .conn-box .conn-status {
+    font-size: 13px; font-weight: 600; margin-bottom: 10px;
+  }
+  .conn-status.off { color: var(--text-dim); }
+  .conn-status.waiting { color: var(--orange); }
+  .conn-status.on { color: var(--green); }
+
+  .launch-btn {
+    width: 100%; padding: 10px; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 700; cursor: pointer;
+    background: linear-gradient(135deg, var(--green), #2db86e);
+    color: #111; transition: all .2s;
+  }
+  .launch-btn:hover { transform: scale(1.02); }
+  .launch-btn:disabled {
+    background: var(--border); color: var(--text-dim);
+    cursor: default; transform: none;
+  }
+
+  /* Episode 控制 */
+  .ep-row { display: flex; gap: 6px; margin-top: 8px; }
+  .ep-btn {
+    flex: 1; padding: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text-dim); border-radius: 4px;
+    font-size: 11px; cursor: pointer; transition: all .2s;
+  }
+  .ep-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* 演化面板 */
+  .evo-section { margin-top: 12px; }
+  .evo-stat {
+    display: flex; justify-content: space-between; font-size: 11px;
+    padding: 2px 0;
+  }
+  .evo-stat .label { color: var(--text-dim); }
+  .evo-stat .val   { color: var(--purple); font-weight: 600; }
+  .evo-btn {
+    width: 100%; margin-top: 8px; padding: 8px; border: none;
+    border-radius: 5px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: linear-gradient(135deg, var(--purple), #8060e0);
+    color: #fff; transition: opacity .2s;
+  }
+  .evo-btn:hover { opacity: .85; }
+
+  /* ── 训练模式 ── */
+  .train-mode-section { margin-bottom: 12px; }
+  .mode-options { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+  .mode-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; cursor: pointer; font-size: 11px; color: var(--text-dim);
+    transition: all .2s;
+  }
+  .mode-option:hover { border-color: var(--accent); color: var(--text); }
+  .mode-option.active {
+    border-color: var(--accent); color: var(--accent);
+    background: rgba(99, 102, 241, 0.1);
+  }
+  .mode-option input[type="radio"] { display: none; }
+  .mode-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid var(--border); flex-shrink: 0;
+  }
+  .mode-option.active .mode-dot {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .mode-label { flex: 1; }
+  .mode-desc { font-size: 9px; color: var(--text-dim); margin-top: 1px; }
+  .train-stats { margin-top: 8px; padding: 8px; background: var(--bg); border-radius: 5px; }
+  .train-stat {
+    display: flex; justify-content: space-between; font-size: 11px;
+    padding: 2px 0;
+  }
+  .train-stat .label { color: var(--text-dim); }
+  .train-stat .val { color: var(--accent); font-weight: 600; }
+  .train-ctrl-row { display: flex; gap: 6px; margin-top: 8px; }
+  .train-btn {
+    flex: 1; padding: 8px; border: none; border-radius: 5px;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity .2s;
+  }
+  .train-btn.start {
+    background: linear-gradient(135deg, var(--accent), #4f46e5);
+    color: #fff;
+  }
+  .train-btn.stop {
+    background: linear-gradient(135deg, var(--red), #c53030);
+    color: #fff;
+  }
+  .train-btn:hover { opacity: .85; }
+  .train-btn:disabled {
+    background: var(--border); color: var(--text-dim);
+    cursor: default; opacity: 1;
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* 响应式 */
+  @media (max-width: 900px) {
+    .container {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto auto auto;
+    }
+    .sidebar, .right-panel { grid-column: 1; grid-row: auto; max-height: 280px; }
+    .task-panel, .action-palette, .log-panel { grid-column: 1; grid-row: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⛏ Luanti 智能体控制面板</h1>
+  <div class="meta">
+    <span><span class="status-dot off" id="conn-dot"></span><span id="conn-text">未连接</span></span>
+    <span>步骤: <b id="step-count">0</b></span>
+    <span>EP: <b id="ep-count">0</b></span>
+    <span>运行: <b id="uptime">0:00</b></span>
+    <button class="hdr-btn dim" onclick="doSave()" title="保存状态">💾 保存</button>
+    <button class="hdr-btn red" onclick="doShutdown()">⏹ 退出</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- ====== 左侧：实时状态 ====== -->
+  <div class="panel sidebar">
+    <div class="panel-title">实时状态</div>
+
+    <div class="stat-section">
+      <h3>生命体征</h3>
+      <div class="stat-row">
+        <span class="stat-label">❤️ HP</span>
+        <span class="stat-value" id="hp-val">20/20</span>
+      </div>
+      <div class="bar-container"><div class="bar-fill" id="hp-bar" style="width:100%;background:var(--green)"></div></div>
+
+      <div class="stat-row" style="margin-top:6px">
+        <span class="stat-label">🍖 饥饿</span>
+        <span class="stat-value" id="hunger-val">20</span>
+      </div>
+      <div class="bar-container"><div class="bar-fill" id="hunger-bar" style="width:100%;background:var(--green)"></div></div>
+
+      <div class="stat-row" style="margin-top:6px">
+        <span class="stat-label">💨 氧气</span>
+        <span class="stat-value" id="breath-val">10</span>
+      </div>
+    </div>
+
+    <div class="stat-section">
+      <h3>环境</h3>
+      <div class="stat-row"><span class="stat-label">🕐 时间</span><span class="stat-value" id="env-time">-</span></div>
+      <div class="stat-row"><span class="stat-label">📍 位置</span><span class="stat-value" id="env-pos">-</span></div>
+      <div class="stat-row"><span class="stat-label">🌍 群系</span><span class="stat-value" id="env-biome">-</span></div>
+      <div class="stat-row"><span class="stat-label">💡 光照</span><span class="stat-value" id="env-light">-</span></div>
+      <div class="stat-row"><span class="stat-label">🏠 庇护所</span><span class="stat-value" id="env-shelter">-</span></div>
+    </div>
+
+    <div class="stat-section">
+      <h3>智能体</h3>
+      <div class="stat-row"><span class="stat-label">模式</span><span class="stat-value" id="agent-mode">-</span></div>
+      <div class="stat-row"><span class="stat-label">目标</span><span class="stat-value" id="agent-goal" style="font-size:10px;max-width:160px;text-align:right">-</span></div>
+      <div class="stat-row"><span class="stat-label">风险</span><span class="stat-value" id="agent-risk">-</span></div>
+      <div class="stat-row"><span class="stat-label">优先</span><span class="stat-value" id="agent-priority" style="font-size:10px">-</span></div>
+    </div>
+
+    <div class="stat-section">
+      <h3>记忆系统</h3>
+      <div class="stat-row"><span class="stat-label">情景</span><span class="stat-value" id="mem-episodic">0</span></div>
+      <div class="stat-row"><span class="stat-label">规则</span><span class="stat-value" id="mem-semantic">0</span></div>
+      <div class="stat-row"><span class="stat-label">技能</span><span class="stat-value" id="mem-skills">0</span></div>
+    </div>
+
+    <div class="stat-section">
+      <h3>🎒 库存</h3>
+      <div class="inv-tags" id="inv-list">
+        <span class="inv-tag" style="color:var(--text-dim)">空</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 中间上方：任务设定 ====== -->
+  <div class="panel task-panel">
+    <div class="panel-title">任务设定</div>
+    <div class="task-form">
+      <input type="text" id="task-input" placeholder="输入任务目标，例如：收集 20 块木头并合成工具" />
+      <button class="btn btn-primary" onclick="setTask()">发送</button>
+      <button class="btn btn-secondary" onclick="clearTask()">清除</button>
+    </div>
+    <div class="current-task empty" id="current-task">当前模式: 自主生存（无用户任务）</div>
+    <div class="preset-tasks">
+      <button class="preset-btn" onclick="setPreset('收集 20 块木头')">收集木头</button>
+      <button class="preset-btn" onclick="setPreset('合成石制工具')">合成石制工具</button>
+      <button class="preset-btn" onclick="setPreset('建造一个庇护所')">建造庇护所</button>
+      <button class="preset-btn" onclick="setPreset('寻找和开采铁矿')">开采铁矿</button>
+      <button class="preset-btn" onclick="setPreset('种植农作物并收获食物')">种植农作物</button>
+      <button class="preset-btn" onclick="setPreset('探索周围环境，寻找有价值的资源')">探索环境</button>
+      <button class="preset-btn" onclick="setPreset('尽量长时间存活')">长期生存</button>
+    </div>
+  </div>
+
+  <!-- ====== 中间下方：决策日志 ====== -->
+
+  <!-- ====== 动作面板 ====== -->
+  <div class="panel action-palette">
+    <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
+      🎮 手动动作
+      <span style="font-size:10px;color:var(--text-dim);font-weight:400">点击添加 → 发送执行</span>
+    </div>
+    <div class="act-categories" id="act-categories"></div>
+    <div class="act-grid" id="act-grid"></div>
+    <div class="act-queue" id="act-queue">
+      <span class="act-queue-empty">点击上方动作添加到队列…</span>
+    </div>
+    <div class="act-ctrl-row">
+      <button class="btn btn-green" onclick="sendActionQueue()" id="send-actions-btn" disabled>▶ 发送</button>
+      <button class="btn btn-secondary" onclick="clearActionQueue()">✕ 清空</button>
+      <span class="stamina-cost" id="queue-stamina">体能消耗: 0</span>
+    </div>
+  </div>
+
+  <!-- ====== 决策日志 ====== -->
+  <div class="panel log-panel">
+    <div class="panel-title" style="display:flex;justify-content:space-between;align-items:center;">
+      决策日志
+      <span style="font-size:10px;color:var(--text-dim);font-weight:400" id="log-count">0 条</span>
+    </div>
+    <div class="log-list" id="log-list"></div>
+  </div>
+
+  <!-- ====== 右侧：控制面板 ====== -->
+  <div class="panel right-panel">
+
+    <!-- 连接与启动 -->
+    <div class="panel-title">🎮 游戏连接</div>
+    <div class="conn-box">
+      <div class="big-icon" id="conn-icon">🔌</div>
+      <div class="conn-label">Luanti 连接状态</div>
+      <div class="conn-status off" id="conn-status-text">未启动</div>
+      <button class="launch-btn" id="launch-btn" onclick="doLaunch()">
+        🚀 启动 Luanti
+      </button>
+    </div>
+
+    <!-- 训练模式 -->
+    <div class="panel-title" style="margin-top:4px">🧠 智能体模式</div>
+    <div class="train-mode-section">
+      <div class="mode-options" id="mode-options">
+        <div class="mode-option active" data-mode="llm" onclick="selectMode('llm')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">LLM 决策</div><div class="mode-desc">大模型自主推理决策</div></div>
+        </div>
+        <div class="mode-option" data-mode="ppo" onclick="selectMode('ppo')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">PPO 训练</div><div class="mode-desc">近端策略优化强化学习</div></div>
+        </div>
+        <div class="mode-option" data-mode="dqn" onclick="selectMode('dqn')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">DQN 训练</div><div class="mode-desc">Deep Q-Network 强化学习</div></div>
+        </div>
+        <div class="mode-option" data-mode="random" onclick="selectMode('random')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">随机基线</div><div class="mode-desc">随机动作作为对比基线</div></div>
+        </div>
+      </div>
+      <div class="train-stats" id="train-stats" style="display:none">
+        <div class="train-stat"><span class="label">训练步数</span><span class="val" id="train-steps">0</span></div>
+        <div class="train-stat"><span class="label">Episode</span><span class="val" id="train-episodes">0</span></div>
+        <div class="train-stat"><span class="label">平均奖励</span><span class="val" id="train-reward">0.00</span></div>
+        <div class="train-stat"><span class="label">损失</span><span class="val" id="train-loss">-</span></div>
+        <div class="train-stat" id="train-eps-row" style="display:none">
+          <span class="label">Epsilon</span><span class="val" id="train-epsilon">1.00</span>
+        </div>
+      </div>
+      <div class="train-ctrl-row">
+        <button class="train-btn start" id="train-apply-btn" onclick="applyTrainingMode()">
+          ✅ 应用模式
+        </button>
+      </div>
+    </div>
+
+    <!-- Episode 控制 -->
+    <div class="panel-title" style="margin-top:4px">📝 Episode</div>
+    <div style="font-size:11px;color:var(--text-dim);">
+      当前步数: <b id="ep-steps" style="color:var(--text)">0</b> / 50
+    </div>
+    <div class="bar-container" style="margin-top:4px">
+      <div class="bar-fill" id="ep-bar" style="width:0%;background:var(--accent)"></div>
+    </div>
+    <div class="ep-row">
+      <button class="ep-btn" onclick="doNewEpisode()">🔄 新 Episode</button>
+      <button class="ep-btn" onclick="doSave()">💾 保存</button>
+    </div>
+
+    <!-- 演化面板 -->
+    <div class="panel-title" style="margin-top:12px">🧬 策略演化</div>
+    <div class="evo-section">
+      <div class="evo-stat"><span class="label">代数</span><span class="val" id="evo-gen">0</span></div>
+      <div class="evo-stat"><span class="label">种群</span><span class="val" id="evo-pop">0</span></div>
+      <div class="evo-stat"><span class="label">精英</span><span class="val" id="evo-elite">0</span></div>
+      <div class="evo-stat"><span class="label">最佳适应度</span><span class="val" id="evo-best">0.00</span></div>
+      <div class="evo-stat"><span class="label">平均适应度</span><span class="val" id="evo-avg">0.00</span></div>
+      <button class="evo-btn" onclick="doEvolve()">⚡ 执行一代演化</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ═══ 全局状态 ═══
+let logs = [];
+const logListEl = document.getElementById('log-list');
+
+// ═══ SSE 连接 ═══
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.type === 'status') updateStatus(msg.data);
+      if (msg.type === 'log')    appendLog(msg.data);
+    } catch {}
+  };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
+}
+
+// ═══ 状态更新 ═══
+function updateStatus(s) {
+  // 连接
+  const dot = document.getElementById('conn-dot');
+  const txt = document.getElementById('conn-text');
+  const icon = document.getElementById('conn-icon');
+  const cst = document.getElementById('conn-status-text');
+  const lbtn = document.getElementById('launch-btn');
+
+  if (s.connected) {
+    dot.className = 'status-dot on'; txt.textContent = '已连接';
+    icon.textContent = '✅'; cst.textContent = '已连接'; cst.className = 'conn-status on';
+    lbtn.disabled = true; lbtn.textContent = '✅ 已连接';
+  } else if (s.luanti_launched) {
+    dot.className = 'status-dot wait'; txt.textContent = '等待连接';
+    icon.textContent = '⏳'; cst.textContent = '等待 Luanti 连接...'; cst.className = 'conn-status waiting';
+    lbtn.disabled = true; lbtn.textContent = '⏳ 等待连接...';
+  } else {
+    dot.className = 'status-dot off'; txt.textContent = '未连接';
+    icon.textContent = '🔌'; cst.textContent = '未启动'; cst.className = 'conn-status off';
+    lbtn.disabled = false; lbtn.textContent = '🚀 启动 Luanti';
+  }
+
+  document.getElementById('step-count').textContent = s.step_count || 0;
+  document.getElementById('ep-count').textContent = s.episode_count || 0;
+  const up = s.uptime || 0;
+  document.getElementById('uptime').textContent = Math.floor(up/60) + ':' + String(up%60).padStart(2,'0');
+
+  // 环境
+  const env = s.env_state || {};
+  const hp = env.health ?? 20, maxHp = env.max_health ?? 20;
+  const hunger = env.hunger ?? 20, breath = env.breath ?? 10;
+
+  document.getElementById('hp-val').textContent = hp + '/' + maxHp;
+  const hpPct = maxHp > 0 ? hp/maxHp*100 : 100;
+  const hpBar = document.getElementById('hp-bar');
+  hpBar.style.width = hpPct + '%';
+  hpBar.style.background = hpPct > 50 ? 'var(--green)' : hpPct > 25 ? 'var(--orange)' : 'var(--red)';
+
+  document.getElementById('hunger-val').textContent = hunger;
+  const hBar = document.getElementById('hunger-bar');
+  const hPct = hunger/20*100;
+  hBar.style.width = hPct + '%';
+  hBar.style.background = hPct > 40 ? 'var(--green)' : hPct > 15 ? 'var(--orange)' : 'var(--red)';
+
+  document.getElementById('breath-val').textContent = breath;
+
+  document.getElementById('env-time').textContent = env.time || '-';
+  const pos = env.position || {};
+  document.getElementById('env-pos').textContent =
+    pos.x != null ? `${pos.x?.toFixed(1)}, ${pos.y?.toFixed(1)}, ${pos.z?.toFixed(1)}` : '-';
+  document.getElementById('env-biome').textContent = env.biome_name || '-';
+  document.getElementById('env-light').textContent = env.light_level ?? '-';
+  document.getElementById('env-shelter').textContent = env.has_shelter ? '✅' : '❌';
+
+  // 智能体
+  const as = s.agent_state || {};
+  document.getElementById('agent-mode').textContent = as.current_mode || '-';
+  document.getElementById('agent-goal').textContent = as.current_goal || '-';
+  const risk = as.risk_level || '-';
+  const riskEl = document.getElementById('agent-risk');
+  riskEl.textContent = risk;
+  riskEl.className = 'stat-value ' + (risk==='high'?'danger':risk==='medium'?'warn':'good');
+  document.getElementById('agent-priority').textContent = as.priority_issue || '-';
+
+  // 记忆
+  const ms = s.memory_stats || {};
+  document.getElementById('mem-episodic').textContent = ms.episodic_count ?? 0;
+  document.getElementById('mem-semantic').textContent = ms.semantic_rules_count ?? 0;
+  document.getElementById('mem-skills').textContent = ms.skills_count ?? 0;
+
+  // 库存
+  const inv = env.inventory || {};
+  const invEl = document.getElementById('inv-list');
+  const entries = Object.entries(inv);
+  invEl.innerHTML = entries.length === 0
+    ? '<span class="inv-tag" style="color:var(--text-dim)">空</span>'
+    : entries.map(([k,v]) => `<span class="inv-tag">${k} ×${v}</span>`).join('');
+
+  // 任务
+  const taskEl = document.getElementById('current-task');
+  if (s.user_task) {
+    taskEl.textContent = '🎯 当前任务: ' + s.user_task;
+    taskEl.className = 'current-task';
+  } else {
+    taskEl.textContent = '当前模式: 自主生存（无用户任务）';
+    taskEl.className = 'current-task empty';
+  }
+
+  // Episode
+  const epSteps = s.episode_steps || 0;
+  document.getElementById('ep-steps').textContent = epSteps;
+  document.getElementById('ep-bar').style.width = Math.min(100, epSteps/50*100) + '%';
+
+  // 演化
+  const ev = s.evolution_stats || {};
+  document.getElementById('evo-gen').textContent = ev.current_generation ?? 0;
+  document.getElementById('evo-pop').textContent = ev.population_size ?? 0;
+  document.getElementById('evo-elite').textContent = ev.elite_count ?? 0;
+  document.getElementById('evo-best').textContent = (ev.best_fitness ?? 0).toFixed(2);
+  document.getElementById('evo-avg').textContent = (ev.avg_fitness ?? 0).toFixed(2);
+
+  // 训练模式
+  updateTrainingUI(s);
+}
+
+// ═══ 日志 ═══
+function appendLog(entry) {
+  logs.push(entry);
+  if (logs.length > 200) logs = logs.slice(-200);
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  const t = entry.type || 'system';
+  div.innerHTML = `<span class="log-time">${entry.time||''}</span>` +
+    `<span class="log-type ${t}">${t}</span>` +
+    `<span class="log-msg">${escapeHtml(entry.message||'')}</span>`;
+  logListEl.appendChild(div);
+  logListEl.scrollTop = logListEl.scrollHeight;
+  document.getElementById('log-count').textContent = logs.length + ' 条';
+}
+function escapeHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ═══ 操作 ═══
+async function setTask() {
+  const input = document.getElementById('task-input');
+  const task = input.value.trim();
+  if (!task) return;
+  await fetch('/api/task', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({task}) });
+  input.value = '';
+}
+async function clearTask() {
+  await fetch('/api/task', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({task:''}) });
+}
+function setPreset(task) { document.getElementById('task-input').value=task; setTask(); }
+
+async function doLaunch() {
+  const btn = document.getElementById('launch-btn');
+  btn.disabled = true; btn.textContent = '⏳ 正在启动...';
+  try { await fetch('/api/launch', {method:'POST'}); } catch {}
+}
+async function doShutdown() {
+  if (!confirm('确认退出智能体？将终止所有服务。')) return;
+  try { await fetch('/api/shutdown', {method:'POST'}); } catch {}
+  document.body.innerHTML='<div style="display:flex;justify-content:center;align-items:center;height:100vh;color:#888;font-size:18px">智能体已停止</div>';
+}
+async function doSave() {
+  try {
+    const r = await fetch('/api/save', {method:'POST'});
+    const d = await r.json();
+    if (d.ok) alert('状态已保存');
+  } catch {}
+}
+async function doNewEpisode() {
+  try { await fetch('/api/new_episode', {method:'POST'}); } catch {}
+}
+async function doEvolve() {
+  try { await fetch('/api/evolve', {method:'POST'}); } catch {}
+}
+
+document.getElementById('task-input').addEventListener('keydown', (e) => { if(e.key==='Enter') setTask(); });
+
+// ═══ 训练模式 ═══
+let currentSelectedMode = 'llm';
+let currentActiveMode = 'llm';
+
+function selectMode(mode) {
+  currentSelectedMode = mode;
+  document.querySelectorAll('.mode-option').forEach(el => {
+    el.classList.toggle('active', el.dataset.mode === mode);
+  });
+  // 显示/隐藏 RL 统计
+  document.getElementById('train-stats').style.display = (mode !== 'llm') ? 'block' : 'none';
+  document.getElementById('train-eps-row').style.display = (mode === 'dqn') ? 'flex' : 'none';
+}
+
+async function applyTrainingMode() {
+  const btn = document.getElementById('train-apply-btn');
+  const mode = currentSelectedMode;
+  btn.disabled = true;
+  btn.textContent = '⏳ 切换中...';
+  try {
+    const r = await fetch('/api/training_mode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({mode})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      currentActiveMode = mode;
+      btn.textContent = '✅ 已应用';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '✅ 应用模式'; }, 1500);
+    } else {
+      btn.textContent = '❌ 失败';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '✅ 应用模式'; }, 2000);
+    }
+  } catch {
+    btn.disabled = false;
+    btn.textContent = '✅ 应用模式';
+  }
+}
+
+function updateTrainingUI(s) {
+  // 同步当前活动模式
+  const mode = s.training_mode || 'llm';
+  if (mode !== currentActiveMode) {
+    currentActiveMode = mode;
+    currentSelectedMode = mode;
+    selectMode(mode);
+  }
+
+  // 更新训练统计
+  const ts = s.training_stats || {};
+  if (Object.keys(ts).length > 0) {
+    document.getElementById('train-steps').textContent = ts.total_steps || 0;
+    document.getElementById('train-episodes').textContent = ts.episodes || 0;
+    document.getElementById('train-reward').textContent = (ts.avg_reward ?? 0).toFixed(2);
+    document.getElementById('train-loss').textContent = ts.loss != null ? ts.loss.toFixed(4) : '-';
+    if (ts.epsilon != null) {
+      document.getElementById('train-epsilon').textContent = ts.epsilon.toFixed(3);
+    }
+  }
+
+  // 更新左侧智能体模式显示
+  const modeNames = {llm:'LLM 决策', ppo:'PPO 训练', dqn:'DQN 训练', random:'随机基线'};
+  document.getElementById('agent-mode').textContent = modeNames[mode] || mode;
+}
+
+// ═══ 手动动作面板 ═══
+const ACTION_CATALOG = {
+  '移动': [
+    {action:'move',params:{speed:4},label:'前进',cost:3},
+    {action:'retreat',params:{speed:6},label:'撤退',cost:4},
+    {action:'jump',params:{},label:'跳跃',cost:2},
+    {action:'swim',params:{},label:'游泳',cost:4},
+    {action:'sneak',params:{},label:'潜行',cost:1},
+  ],
+  '采集': [
+    {action:'dig',params:{target_type:'tree'},label:'砍树',cost:5},
+    {action:'dig',params:{target_type:'stone'},label:'采石',cost:6},
+    {action:'dig',params:{target_type:'ore'},label:'采矿',cost:7},
+    {action:'dig',params:{},label:'挖掘',cost:4},
+    {action:'dig_down',params:{},label:'向下挖',cost:5},
+    {action:'pickup_item',params:{},label:'拾取',cost:1},
+  ],
+  '搜索': [
+    {action:'find_resource',params:{resource_type:'tree'},label:'找树木',cost:2},
+    {action:'find_resource',params:{resource_type:'stone'},label:'找石头',cost:2},
+    {action:'find_resource',params:{resource_type:'food'},label:'找食物',cost:2},
+    {action:'look_around',params:{},label:'环顾',cost:1},
+    {action:'look_at',params:{},label:'查看',cost:1},
+  ],
+  '建造': [
+    {action:'place',params:{},label:'放置',cost:4},
+    {action:'build_shelter',params:{},label:'建庇护所',cost:10},
+    {action:'light_area',params:{},label:'点亮',cost:2},
+    {action:'tunnel',params:{},label:'挖隧道',cost:12},
+    {action:'bridge',params:{},label:'搭桥',cost:10},
+    {action:'tower_up',params:{},label:'搭塔',cost:8},
+  ],
+  '合成': [
+    {action:'craft',params:{},label:'合成',cost:3},
+    {action:'smelt',params:{},label:'冶炼',cost:4},
+  ],
+  '生存': [
+    {action:'eat',params:{},label:'进食',cost:-15},
+    {action:'attack',params:{},label:'攻击',cost:6},
+    {action:'equip',params:{},label:'装备',cost:1},
+    {action:'wait',params:{},label:'等待/恢复',cost:-5},
+  ],
+  '库存': [
+    {action:'drop_item',params:{},label:'丢弃',cost:1},
+    {action:'deposit_item',params:{},label:'存放',cost:2},
+    {action:'take_from_container',params:{},label:'取出',cost:2},
+    {action:'sort_inventory',params:{},label:'整理',cost:1},
+  ],
+  '农业': [
+    {action:'farm_plant',params:{},label:'种植',cost:4},
+    {action:'farm_harvest',params:{},label:'收获',cost:4},
+  ],
+  '交互': [
+    {action:'use_node',params:{},label:'使用',cost:2},
+    {action:'punch_node',params:{},label:'敲击',cost:3},
+  ],
+};
+
+let actionQueue = [];
+let currentCategory = Object.keys(ACTION_CATALOG)[0];
+
+function initActionPalette() {
+  const catEl = document.getElementById('act-categories');
+  Object.keys(ACTION_CATALOG).forEach((cat, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'act-cat-btn' + (i === 0 ? ' active' : '');
+    btn.textContent = cat;
+    btn.onclick = () => showCategory(cat);
+    catEl.appendChild(btn);
+  });
+  showCategory(currentCategory);
+}
+
+function showCategory(cat) {
+  currentCategory = cat;
+  document.querySelectorAll('.act-cat-btn').forEach(b =>
+    b.classList.toggle('active', b.textContent === cat));
+  const grid = document.getElementById('act-grid');
+  grid.innerHTML = '';
+  ACTION_CATALOG[cat].forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'act-btn';
+    const costClass = a.cost < 0 ? 'regen' : '';
+    const costText = a.cost < 0 ? `+${-a.cost}` : `-${a.cost}`;
+    btn.innerHTML = `${a.label}<span class="cost ${costClass}">${costText}</span>`;
+    btn.onclick = () => addToQueue(a);
+    grid.appendChild(btn);
+  });
+}
+
+function addToQueue(a) {
+  actionQueue.push({...a});
+  renderQueue();
+}
+
+function removeFromQueue(idx) {
+  actionQueue.splice(idx, 1);
+  renderQueue();
+}
+
+function clearActionQueue() {
+  actionQueue = [];
+  renderQueue();
+}
+
+function renderQueue() {
+  const el = document.getElementById('act-queue');
+  const btn = document.getElementById('send-actions-btn');
+  const stEl = document.getElementById('queue-stamina');
+  if (actionQueue.length === 0) {
+    el.innerHTML = '<span class="act-queue-empty">点击上方动作添加到队列…</span>';
+    btn.disabled = true;
+    stEl.textContent = '体能消耗: 0';
+    return;
+  }
+  btn.disabled = false;
+  el.innerHTML = actionQueue.map((a, i) =>
+    `<span class="act-queue-tag">${i+1}. ${a.label}<span class="remove" onclick="removeFromQueue(${i})">×</span></span>`
+  ).join('');
+  const totalCost = actionQueue.reduce((s, a) => s + a.cost, 0);
+  const costColor = totalCost > 0 ? 'var(--orange)' : 'var(--green)';
+  stEl.innerHTML = `体能消耗: <b style="color:${costColor}">${totalCost > 0 ? totalCost : '+' + (-totalCost)}</b>`;
+}
+
+async function sendActionQueue() {
+  if (actionQueue.length === 0) return;
+  const btn = document.getElementById('send-actions-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ 发送中...';
+  const actions = actionQueue.map(a => ({action: a.action, params: a.params}));
+  try {
+    const r = await fetch('/api/manual_action', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({actions})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      btn.textContent = '✅ 已发送';
+      actionQueue = [];
+      renderQueue();
+    } else {
+      btn.textContent = '❌ 失败';
+    }
+  } catch {
+    btn.textContent = '❌ 失败';
+  }
+  setTimeout(() => { btn.disabled = false; btn.textContent = '▶ 发送'; }, 1500);
+}
+
+initActionPalette();
+
+// 初始加载日志
+(async () => {
+  try { const r=await fetch('/api/logs?limit=100'); (await r.json()).forEach(appendLog); } catch {}
+})();
+
+connectSSE();
+</script>
+</body>
+</html>

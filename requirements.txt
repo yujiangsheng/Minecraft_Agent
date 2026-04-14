@@ -1,0 +1,26 @@
+# ═══════════════════════════════════════════════════════════
+#  Luanti AI Agent — Python 依赖清单
+#  作者: Jiangsheng Yu | 许可证: MIT
+# ═══════════════════════════════════════════════════════════
+#
+#  安装方式:
+#    pip install -r requirements.txt          # 全部依赖
+#
+#  注意: RL 训练使用纯 PyTorch 实现 (PPO / DQN)，无需 stable-baselines3。
+# ═══════════════════════════════════════════════════════════
+
+# ── 核心依赖（LLM 模式必需）──
+openai>=1.0.0                # OpenAI 兼容 API（同时用于 Ollama 本地推理）
+
+# ── 可选 LLM 后端 ──
+anthropic>=0.18.0            # Anthropic Claude（使用 --llm anthropic 时需要）
+
+# ── RL 训练依赖（可选，使用 train_rl.py 时需要）──
+gymnasium>=0.29.0            # Gymnasium 环境接口
+torch>=2.0.0                 # PyTorch（PPO / DQN 训练）
+numpy>=1.24.0,<2.0           # 数值计算（PyTorch 兼容）
+
+# ── 开发依赖（可选）──
+# pytest>=7.0.0              # 测试框架
+# black>=23.0.0              # 代码格式化
+# mypy>=1.0.0                # 类型检查

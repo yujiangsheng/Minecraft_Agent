@@ -1,0 +1,403 @@
+{
+  "step_counter": 10,
+  "trajectory": [
+    {
+      "step": 1,
+      "state": {
+        "time": "day",
+        "health": 19,
+        "hunger": 15,
+        "position": {
+          "x": 87,
+          "y": 64,
+          "z": 66
+        },
+        "inventory": {
+          "wood": 17,
+          "cobblestone": 24,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "stone",
+          "dirt",
+          "tree"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 3,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.245751"
+    },
+    {
+      "step": 2,
+      "state": {
+        "time": "day",
+        "health": 20,
+        "hunger": 12,
+        "position": {
+          "x": -100,
+          "y": 64,
+          "z": 7
+        },
+        "inventory": {
+          "wood": 3,
+          "cobblestone": 0,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "grass",
+          "tree",
+          "stone",
+          "dirt"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 0,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.246391"
+    },
+    {
+      "step": 3,
+      "state": {
+        "time": "day",
+        "health": 16,
+        "hunger": 12,
+        "position": {
+          "x": -96,
+          "y": 64,
+          "z": 70
+        },
+        "inventory": {
+          "wood": 19,
+          "cobblestone": 5,
+          "wooden_pickaxe": false
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "grass",
+          "dirt",
+          "stone"
+        ],
+        "has_shelter": true
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 0,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.246935"
+    },
+    {
+      "step": 4,
+      "state": {
+        "time": "day",
+        "health": 20,
+        "hunger": 13,
+        "position": {
+          "x": 13,
+          "y": 64,
+          "z": -14
+        },
+        "inventory": {
+          "wood": 3,
+          "cobblestone": 9,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "grass"
+        ],
+        "has_shelter": true
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 1,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.247418"
+    },
+    {
+      "step": 5,
+      "state": {
+        "time": "day",
+        "health": 19,
+        "hunger": 12,
+        "position": {
+          "x": -5,
+          "y": 64,
+          "z": 3
+        },
+        "inventory": {
+          "wood": 19,
+          "cobblestone": 18,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [
+          {
+            "type": "pig",
+            "hostile": false,
+            "distance": 14
+          }
+        ],
+        "nearby_blocks": [
+          "grass",
+          "tree"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 3,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.247961"
+    },
+    {
+      "step": 6,
+      "state": {
+        "time": "day",
+        "health": 19,
+        "hunger": 13,
+        "position": {
+          "x": -58,
+          "y": 64,
+          "z": 78
+        },
+        "inventory": {
+          "wood": 5,
+          "cobblestone": 10,
+          "wooden_pickaxe": false
+        },
+        "nearby_entities": [
+          {
+            "type": "pig",
+            "hostile": false,
+            "distance": 16
+          }
+        ],
+        "nearby_blocks": [
+          "dirt",
+          "grass",
+          "stone"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 1,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.249190"
+    },
+    {
+      "step": 7,
+      "state": {
+        "time": "day",
+        "health": 16,
+        "hunger": 15,
+        "position": {
+          "x": -27,
+          "y": 64,
+          "z": -46
+        },
+        "inventory": {
+          "wood": 3,
+          "cobblestone": 20,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "dirt",
+          "grass",
+          "stone",
+          "tree"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 2,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.250076"
+    },
+    {
+      "step": 8,
+      "state": {
+        "time": "day",
+        "health": 17,
+        "hunger": 18,
+        "position": {
+          "x": -63,
+          "y": 64,
+          "z": -80
+        },
+        "inventory": {
+          "wood": 19,
+          "cobblestone": 5,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "stone",
+          "dirt"
+        ],
+        "has_shelter": false
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": false,
+        "action": "find_tree",
+        "outcome": "failed",
+        "error_type": "action_failed",
+        "resources_gained": 0,
+        "damage_taken": 1
+      },
+      "timestamp": "2026-04-12T16:44:10.250808"
+    },
+    {
+      "step": 9,
+      "state": {
+        "time": "day",
+        "health": 17,
+        "hunger": 14,
+        "position": {
+          "x": 70,
+          "y": 64,
+          "z": 58
+        },
+        "inventory": {
+          "wood": 9,
+          "cobblestone": 12,
+          "wooden_pickaxe": false
+        },
+        "nearby_entities": [],
+        "nearby_blocks": [
+          "tree",
+          "grass",
+          "stone",
+          "dirt"
+        ],
+        "has_shelter": true
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 2,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.251938"
+    },
+    {
+      "step": 10,
+      "state": {
+        "time": "day",
+        "health": 17,
+        "hunger": 14,
+        "position": {
+          "x": 20,
+          "y": 64,
+          "z": -61
+        },
+        "inventory": {
+          "wood": 3,
+          "cobblestone": 4,
+          "wooden_pickaxe": true
+        },
+        "nearby_entities": [
+          {
+            "type": "pig",
+            "hostile": false,
+            "distance": 18
+          }
+        ],
+        "nearby_blocks": [
+          "tree",
+          "dirt",
+          "stone",
+          "grass"
+        ],
+        "has_shelter": true
+      },
+      "action": {
+        "action": "find_tree",
+        "args": {}
+      },
+      "result": {
+        "success": true,
+        "action": "find_tree",
+        "outcome": "completed",
+        "error_type": null,
+        "resources_gained": 3,
+        "damage_taken": 0
+      },
+      "timestamp": "2026-04-12T16:44:10.252710"
+    }
+  ]
+}

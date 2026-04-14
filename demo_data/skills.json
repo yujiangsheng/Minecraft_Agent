@@ -1,0 +1,379 @@
+{
+  "skills": [
+    {
+      "id": "282d32fee0a7",
+      "name": "emergency_shelter",
+      "purpose": "在危险情况下快速建造紧急庇护所",
+      "trigger_conditions": [
+        "night",
+        "no_shelter",
+        "hostile_nearby"
+      ],
+      "preconditions": [
+        "has_blocks"
+      ],
+      "steps": [
+        {
+          "action": "find_safe_spot",
+          "args": {}
+        },
+        {
+          "action": "dig_hole",
+          "args": {
+            "depth": 3
+          }
+        },
+        {
+          "action": "place_block_overhead",
+          "args": {}
+        },
+        {
+          "action": "wait",
+          "args": {
+            "until": "dawn"
+          }
+        }
+      ],
+      "stop_conditions": [
+        "dawn",
+        "shelter_found"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "no_blocks",
+          "action": "punch_dirt",
+          "args": {}
+        },
+        {
+          "condition": "enemy_attacking",
+          "action": "run_away",
+          "args": {
+            "direction": "random"
+          }
+        }
+      ],
+      "metrics": {
+        "success_signal": "survived_night",
+        "risk_signal": "took_damage"
+      },
+      "priority": 0.95,
+      "created_at": "2026-04-12T16:44:10.243659",
+      "updated_at": "2026-04-12T16:44:10.243659",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    },
+    {
+      "id": "0948087d511e",
+      "name": "gather_wood",
+      "purpose": "采集木头资源",
+      "trigger_conditions": [
+        "need_wood",
+        "trees_nearby"
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "action": "find_tree",
+          "args": {}
+        },
+        {
+          "action": "break_log",
+          "args": {
+            "count": 5
+          }
+        },
+        {
+          "action": "collect_drops",
+          "args": {}
+        }
+      ],
+      "stop_conditions": [
+        "inventory_full",
+        "no_trees",
+        "danger_detected"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "danger_detected",
+          "action": "retreat",
+          "args": {}
+        },
+        {
+          "condition": "no_trees",
+          "action": "explore",
+          "args": {
+            "radius": 50
+          }
+        }
+      ],
+      "metrics": {
+        "success_signal": "wood_in_inventory",
+        "risk_signal": "hostile_nearby"
+      },
+      "priority": 0.8,
+      "created_at": "2026-04-12T16:44:10.243687",
+      "updated_at": "2026-04-12T16:44:10.243687",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    },
+    {
+      "id": "d33ca97ffa8e",
+      "name": "craft_basic_tools",
+      "purpose": "制作基础木制工具",
+      "trigger_conditions": [
+        "has_wood",
+        "no_tools"
+      ],
+      "preconditions": [
+        "has_wood_logs"
+      ],
+      "steps": [
+        {
+          "action": "craft",
+          "args": {
+            "item": "crafting_table",
+            "count": 1
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "wood_planks",
+            "count": 8
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "sticks",
+            "count": 4
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "wooden_pickaxe",
+            "count": 1
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "wooden_sword",
+            "count": 1
+          }
+        }
+      ],
+      "stop_conditions": [
+        "has_basic_tools"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "not_enough_wood",
+          "action": "gather_wood",
+          "args": {}
+        }
+      ],
+      "metrics": {
+        "success_signal": "tools_crafted",
+        "risk_signal": "none"
+      },
+      "priority": 0.85,
+      "created_at": "2026-04-12T16:44:10.243701",
+      "updated_at": "2026-04-12T16:44:10.243701",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    },
+    {
+      "id": "f111e2b5d82a",
+      "name": "hunt_food",
+      "purpose": "猎杀动物获取食物",
+      "trigger_conditions": [
+        "hunger_low",
+        "animals_nearby"
+      ],
+      "preconditions": [
+        "has_weapon"
+      ],
+      "steps": [
+        {
+          "action": "find_animal",
+          "args": {
+            "type": "passive"
+          }
+        },
+        {
+          "action": "approach_carefully",
+          "args": {}
+        },
+        {
+          "action": "attack",
+          "args": {}
+        },
+        {
+          "action": "collect_drops",
+          "args": {}
+        },
+        {
+          "action": "cook_food",
+          "args": {
+            "if": "has_furnace"
+          }
+        }
+      ],
+      "stop_conditions": [
+        "food_sufficient",
+        "no_animals",
+        "danger_detected"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "no_weapon",
+          "action": "craft_weapon",
+          "args": {}
+        },
+        {
+          "condition": "no_animals",
+          "action": "explore",
+          "args": {
+            "radius": 100
+          }
+        }
+      ],
+      "metrics": {
+        "success_signal": "food_obtained",
+        "risk_signal": "health_lost"
+      },
+      "priority": 0.85,
+      "created_at": "2026-04-12T16:44:10.243714",
+      "updated_at": "2026-04-12T16:44:10.243714",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    },
+    {
+      "id": "36102ac85574",
+      "name": "retreat_to_safety",
+      "purpose": "遇到危险时撤退到安全位置",
+      "trigger_conditions": [
+        "danger_detected",
+        "health_low"
+      ],
+      "preconditions": [],
+      "steps": [
+        {
+          "action": "assess_threat",
+          "args": {}
+        },
+        {
+          "action": "find_escape_route",
+          "args": {}
+        },
+        {
+          "action": "run",
+          "args": {
+            "direction": "away_from_threat"
+          }
+        },
+        {
+          "action": "hide_or_defend",
+          "args": {}
+        }
+      ],
+      "stop_conditions": [
+        "safe",
+        "threat_eliminated"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "cornered",
+          "action": "fight",
+          "args": {}
+        },
+        {
+          "condition": "surrounded",
+          "action": "dig_down",
+          "args": {}
+        }
+      ],
+      "metrics": {
+        "success_signal": "health_stable",
+        "risk_signal": "health_decreasing"
+      },
+      "priority": 0.95,
+      "created_at": "2026-04-12T16:44:10.243726",
+      "updated_at": "2026-04-12T16:44:10.243726",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    },
+    {
+      "id": "142f92c23d18",
+      "name": "mine_stone",
+      "purpose": "开采石头升级工具",
+      "trigger_conditions": [
+        "has_wooden_pickaxe",
+        "stone_nearby"
+      ],
+      "preconditions": [
+        "has_pickaxe"
+      ],
+      "steps": [
+        {
+          "action": "find_stone",
+          "args": {}
+        },
+        {
+          "action": "mine_cobblestone",
+          "args": {
+            "count": 10
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "stone_pickaxe",
+            "count": 1
+          }
+        },
+        {
+          "action": "craft",
+          "args": {
+            "item": "stone_sword",
+            "count": 1
+          }
+        }
+      ],
+      "stop_conditions": [
+        "has_stone_tools",
+        "danger_detected"
+      ],
+      "failure_recovery": [
+        {
+          "condition": "pickaxe_broken",
+          "action": "craft_pickaxe",
+          "args": {}
+        },
+        {
+          "condition": "danger_detected",
+          "action": "retreat",
+          "args": {}
+        }
+      ],
+      "metrics": {
+        "success_signal": "stone_tools_crafted",
+        "risk_signal": "cave_danger"
+      },
+      "priority": 0.75,
+      "created_at": "2026-04-12T16:44:10.243737",
+      "updated_at": "2026-04-12T16:44:10.243737",
+      "usage_count": 0,
+      "success_count": 0,
+      "source": "manual"
+    }
+  ],
+  "max_skills": 30
+}

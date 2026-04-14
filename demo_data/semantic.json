@@ -1,0 +1,112 @@
+{
+  "rules": [
+    {
+      "id": "039dd3827a8f",
+      "rule": "夜晚时如果没有安全庇护所，优先寻找或建造庇护所",
+      "confidence": 0.95,
+      "source": "manual",
+      "conditions": [
+        "time=night",
+        "no_shelter"
+      ],
+      "created_at": "2026-04-12T16:44:10.243517",
+      "updated_at": "2026-04-12T16:44:10.243517",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "e865d7b7081f",
+      "rule": "生命值低于8时，避免主动进入战斗",
+      "confidence": 0.9,
+      "source": "manual",
+      "conditions": [
+        "health<8"
+      ],
+      "created_at": "2026-04-12T16:44:10.243564",
+      "updated_at": "2026-04-12T16:44:10.243564",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "8fc959515a52",
+      "rule": "饥饿值低于6时，优先获取食物",
+      "confidence": 0.9,
+      "source": "manual",
+      "conditions": [
+        "hunger<6"
+      ],
+      "created_at": "2026-04-12T16:44:10.243576",
+      "updated_at": "2026-04-12T16:44:10.243576",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "dabc07823466",
+      "rule": "有木制工具且附近可获取石头时，优先升级到石制工具",
+      "confidence": 0.85,
+      "source": "manual",
+      "conditions": [
+        "has_wooden_tools",
+        "stone_available"
+      ],
+      "created_at": "2026-04-12T16:44:10.243588",
+      "updated_at": "2026-04-12T16:44:10.243588",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "6a020acfcd9d",
+      "rule": "敌对生物靠近且装备不足时，优先撤退而非战斗",
+      "confidence": 0.9,
+      "source": "manual",
+      "conditions": [
+        "hostile_nearby",
+        "low_equipment"
+      ],
+      "created_at": "2026-04-12T16:44:10.243599",
+      "updated_at": "2026-04-12T16:44:10.243599",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "20fbfee39efe",
+      "rule": "采集资源前先确认撤退路线",
+      "confidence": 0.8,
+      "source": "manual",
+      "conditions": [
+        "gathering_mode"
+      ],
+      "created_at": "2026-04-12T16:44:10.243609",
+      "updated_at": "2026-04-12T16:44:10.243609",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "e0db1bd04876",
+      "rule": "下矿前准备足够的火把和食物",
+      "confidence": 0.85,
+      "source": "manual",
+      "conditions": [
+        "before_mining"
+      ],
+      "created_at": "2026-04-12T16:44:10.243618",
+      "updated_at": "2026-04-12T16:44:10.243618",
+      "usage_count": 0,
+      "success_rate": 0.5
+    },
+    {
+      "id": "f346f8cb02e8",
+      "rule": "遇到苦力怕时保持距离，不要在狭窄空间战斗",
+      "confidence": 0.95,
+      "source": "manual",
+      "conditions": [
+        "creeper_nearby"
+      ],
+      "created_at": "2026-04-12T16:44:10.243625",
+      "updated_at": "2026-04-12T16:44:10.243625",
+      "usage_count": 0,
+      "success_rate": 0.5
+    }
+  ],
+  "max_rules": 50
+}
