@@ -24,7 +24,7 @@ import time
 from typing import Dict, Any, Optional, List
 
 from config import AgentConfig, DEFAULT_CONFIG
-from agent import AgentCore, Planner, QuickReflection, LongReflection, SkillBuilder, EvolutionOperator
+from agent import AgentCore, Planner, QuickReflection, LongReflection, SkillBuilder, IntentUnderstanding, EvolutionOperator
 from memory import MemoryManager
 from utils import LLMClient
 from luanti_env import LuantiEnvironment, ActionTranslator
@@ -83,6 +83,12 @@ class MinecraftAgent:
         )
         
         self.skill_builder = SkillBuilder(
+            config=self.config,
+            llm_client=self.llm,
+            memory_manager=self.memory
+        )
+        
+        self.intent_understanding = IntentUnderstanding(
             config=self.config,
             llm_client=self.llm,
             memory_manager=self.memory
@@ -186,6 +192,29 @@ class MinecraftAgent:
         """开始新的一局"""
         self.core.start_new_episode()
     
+    def switch_llm_provider(self, provider: str, model: str = None, api_base: str = None):
+        """运行时切换 LLM 提供者
+
+        Args:
+            provider: 提供者名称 (local/openai/anthropic/mock)
+            model: 模型名称（可选，使用默认值）
+            api_base: API 地址（可选，仅 local 模式需要）
+        """
+        new_llm = LLMClient(
+            provider=provider,
+            model=model or self.config.llm.model,
+            temperature=self.config.llm.temperature,
+            api_base=api_base,
+        )
+        self.llm = new_llm
+        self.core.llm = new_llm
+        self.planner.llm = new_llm
+        self.quick_reflection.llm = new_llm
+        self.long_reflection.llm = new_llm
+        self.skill_builder.llm = new_llm
+        self.intent_understanding.llm = new_llm
+        self.evolution.llm = new_llm
+
     def save(self):
         """保存状态"""
         self.memory.save()
@@ -234,6 +263,7 @@ def run_luanti(llm_provider: str = "local", port: int = 8765, data_path: str = "
     env = LuantiEnvironment(host="localhost", port=port)
     dashboard = WebDashboard(host="0.0.0.0", port=web_port)
     dashboard.state.update_memory_stats(agent.memory.get_stats())
+    dashboard.state.set_llm_provider(llm_provider)
 
     print(f"\n[初始化完成] LLM: {llm_provider}")
     print(f"记忆状态: {agent.memory.get_stats()}")
@@ -312,6 +342,23 @@ class LuantiSession:
         # 同步用户任务
         user_task = self.dashboard.state.get_user_task()
         self.agent.core.user_task = user_task
+
+        # 意图理解：当有用户任务时，生成分阶段执行计划并注入决策上下文
+        if user_task:
+            try:
+                plan = self.agent.intent_understanding.plan_execution(user_task, env_state)
+                self.agent.core.user_task_decomposition = plan.to_dict()
+                self.logger.info(
+                    f"执行计划: phase={plan.phase}, "
+                    f"未满足条件={len(plan.unmet_conditions)}, "
+                    f"准备动作={len(plan.prerequisite_actions)}, "
+                    f"主任务动作={len(plan.main_task_actions)}"
+                )
+            except Exception as e:
+                self.logger.error(f"执行计划生成出错: {e}")
+                self.agent.core.user_task_decomposition = None
+        else:
+            self.agent.core.user_task_decomposition = None
 
         # 更新 Dashboard 状态
         self.dashboard.state.update_env_state(env_state)
@@ -712,6 +759,41 @@ class LuantiSession:
 
     # ── 绑定与主循环 ──
 
+    def do_llm_provider(self, provider: str, model: str = "", api_base: str = ""):
+        """LLM 提供者切换回调"""
+        self.logger.info(f"[LLM 切换] → {provider} (model={model or '默认'}, api_base={api_base or '默认'})")
+        self.agent.switch_llm_provider(
+            provider=provider,
+            model=model or None,
+            api_base=api_base or None,
+        )
+        self.dashboard.state.set_llm_provider(provider, model, api_base)
+        self.dashboard.state.add_log({
+            "time": time.strftime("%H:%M:%S"),
+            "type": "system",
+            "message": f"LLM 已切换到 {provider}" + (f" (模型: {model})" if model else "")
+        })
+
+    def do_get_intents(self) -> list:
+        """获取已知意图列表回调"""
+        return self.agent.intent_understanding.get_known_intents()
+
+    def do_intent_decompose(self, intent: str) -> dict:
+        """意图分解回调 — 返回分阶段执行计划"""
+        env_state = self.agent.core.current_env_state or {}
+        plan = self.agent.intent_understanding.plan_execution(intent, env_state)
+        self.dashboard.state.add_log({
+            "time": time.strftime("%H:%M:%S"),
+            "type": "system",
+            "message": (
+                f"意图分解: 「{intent}」→ phase={plan.phase}, "
+                f"未满足={len(plan.unmet_conditions)}, "
+                f"准备动作={len(plan.prerequisite_actions)}, "
+                f"主任务动作={len(plan.main_task_actions)} ({plan.summary})"
+            )
+        })
+        return plan.to_dict()
+
     def bind_callbacks(self):
         """将所有回调绑定到 env 和 dashboard"""
         self.env.set_decision_callback(self.on_decision)
@@ -723,6 +805,9 @@ class LuantiSession:
         self.dashboard.set_new_episode_callback(self.do_new_episode)
         self.dashboard.set_training_mode_callback(self.do_training_mode)
         self.dashboard.set_manual_action_callback(self.do_manual_action)
+        self.dashboard.set_llm_provider_callback(self.do_llm_provider)
+        self.dashboard.set_get_intents_callback(self.do_get_intents)
+        self.dashboard.set_intent_decompose_callback(self.do_intent_decompose)
 
     def do_manual_action(self, actions: list) -> int:
         """手动动作回调 — 将前端选择的动作注入到环境"""

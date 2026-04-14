@@ -316,6 +316,15 @@
     cursor: default; opacity: 1;
   }
 
+  /* LLM 提供者输入框 */
+  .llm-field-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px 8px; color: var(--text);
+    font-size: 11px; font-family: inherit; outline: none;
+  }
+  .llm-field-input:focus { border-color: var(--accent); }
+  .llm-field-input::placeholder { color: var(--text-dim); }
+
   /* 滚动条 */
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -422,6 +431,22 @@
       <button class="preset-btn" onclick="setPreset('探索周围环境，寻找有价值的资源')">探索环境</button>
       <button class="preset-btn" onclick="setPreset('尽量长时间存活')">长期生存</button>
     </div>
+
+    <!-- 意图理解 -->
+    <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <span class="panel-title" style="margin-bottom:0">🧩 意图理解</span>
+        <button class="btn btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="loadKnownIntents()">刷新知识</button>
+      </div>
+      <div class="task-form">
+        <input type="text" id="intent-input" placeholder="输入意图进行分解，例如：垒墙、挖隧道、搭桥" />
+        <button class="btn btn-purple" onclick="decomposeIntent()">分解</button>
+      </div>
+      <div id="intent-result" style="display:none;margin-top:6px;padding:8px;background:var(--bg);border-radius:5px;font-size:11px;max-height:120px;overflow-y:auto;">
+      </div>
+      <div id="known-intents" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">
+      </div>
+    </div>
   </div>
 
   <!-- ====== 中间下方：决策日志 ====== -->
@@ -500,6 +525,38 @@
       <div class="train-ctrl-row">
         <button class="train-btn start" id="train-apply-btn" onclick="applyTrainingMode()">
           ✅ 应用模式
+        </button>
+      </div>
+    </div>
+
+    <!-- LLM 提供者选择 -->
+    <div class="panel-title" style="margin-top:4px">🤖 LLM 提供者</div>
+    <div class="train-mode-section">
+      <div class="mode-options" id="llm-options">
+        <div class="mode-option" data-llm="local" onclick="selectLLM('local')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">本地模型</div><div class="mode-desc">Ollama / vLLM / LM Studio</div></div>
+        </div>
+        <div class="mode-option" data-llm="openai" onclick="selectLLM('openai')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">OpenAI</div><div class="mode-desc">GPT-4 等 OpenAI API</div></div>
+        </div>
+        <div class="mode-option" data-llm="anthropic" onclick="selectLLM('anthropic')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">Anthropic</div><div class="mode-desc">Claude API</div></div>
+        </div>
+        <div class="mode-option active" data-llm="mock" onclick="selectLLM('mock')">
+          <div class="mode-dot"></div>
+          <div><div class="mode-label">Mock</div><div class="mode-desc">模拟响应（测试/调试）</div></div>
+        </div>
+      </div>
+      <div id="llm-extra-fields" style="display:none;margin-top:8px;">
+        <input type="text" id="llm-model-input" class="llm-field-input" placeholder="模型名称（可选，如 qwen2.5:7b-instruct）" />
+        <input type="text" id="llm-api-base-input" class="llm-field-input" placeholder="API 地址（可选，如 http://localhost:11434/v1）" style="margin-top:4px" />
+      </div>
+      <div class="train-ctrl-row" style="margin-top:8px">
+        <button class="train-btn start" id="llm-apply-btn" onclick="applyLLMProvider()">
+          ✅ 应用 LLM
         </button>
       </div>
     </div>
@@ -653,6 +710,9 @@ function updateStatus(s) {
 
   // 训练模式
   updateTrainingUI(s);
+
+  // LLM 提供者
+  updateLLMUI(s);
 }
 
 // ═══ 日志 ═══
@@ -927,6 +987,155 @@ async function sendActionQueue() {
 }
 
 initActionPalette();
+
+// ═══ 意图理解 ═══
+async function decomposeIntent() {
+  const input = document.getElementById('intent-input');
+  const intent = input.value.trim();
+  if (!intent) return;
+  const resultEl = document.getElementById('intent-result');
+  resultEl.style.display = 'block';
+  resultEl.innerHTML = '<span style="color:var(--text-dim)">⏳ 正在分解意图...</span>';
+  try {
+    const r = await fetch('/api/intent_decompose', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({intent})
+    });
+    const d = await r.json();
+    if (d.ok && d.decomposition) {
+      const dc = d.decomposition;
+      const phase = dc.phase || 'ready';
+      const phaseLabel = phase === 'preparing' ? '🔧 准备阶段' : '✅ 条件就绪';
+      const phaseColor = phase === 'preparing' ? 'var(--orange)' : 'var(--green)';
+      let html = `<div style="color:var(--purple);font-weight:600;margin-bottom:4px;">📋 ${escapeHtml(dc.summary || dc.intent)}</div>`;
+      html += `<div style="color:${phaseColor};font-weight:600;margin-bottom:4px;">${phaseLabel} — ${escapeHtml(dc.progress_hint || '')}</div>`;
+      // 前置条件检查结果
+      if (dc.all_conditions && dc.all_conditions.length) {
+        html += '<div style="margin-bottom:4px;font-size:11px;">';
+        dc.all_conditions.forEach(c => {
+          const icon = c.satisfied ? '✅' : '❌';
+          const color = c.satisfied ? 'var(--green)' : 'var(--red)';
+          html += `<div style="color:${color};padding-left:4px;">${icon} ${escapeHtml(c.description)} — ${escapeHtml(c.detail)}</div>`;
+        });
+        html += '</div>';
+      }
+      // 准备阶段动作
+      if (dc.prerequisite_actions && dc.prerequisite_actions.length) {
+        html += '<div style="color:var(--orange);font-weight:600;margin-bottom:2px;margin-top:4px;">🔧 准备动作:</div><div style="margin-bottom:4px;">';
+        dc.prerequisite_actions.forEach((s, i) => {
+          html += `<div style="padding-left:8px;border-left:2px solid var(--orange);margin-bottom:2px;">` +
+            `<span style="color:var(--accent);">${i+1}</span> ` +
+            `<span style="color:var(--green);">${escapeHtml(s.action||'')}</span> ` +
+            `<span style="color:var(--text-dim);">${escapeHtml(s.description||'')}</span></div>`;
+        });
+        html += '</div>';
+      }
+      // 主任务动作
+      if (dc.main_task_actions && dc.main_task_actions.length) {
+        html += '<div style="color:var(--purple);font-weight:600;margin-bottom:2px;margin-top:4px;">🎯 主任务动作:</div><div style="margin-bottom:4px;">';
+        dc.main_task_actions.forEach((s, i) => {
+          html += `<div style="padding-left:8px;border-left:2px solid var(--border);margin-bottom:2px;">` +
+            `<span style="color:var(--accent);">${i+1}</span> ` +
+            `<span style="color:var(--green);">${escapeHtml(s.action||'')}</span> ` +
+            `<span style="color:var(--text-dim);">${escapeHtml(s.description||'')}</span></div>`;
+        });
+        html += '</div>';
+      }
+      resultEl.innerHTML = html;
+      // 刷新已知意图列表
+      loadKnownIntents();
+    } else {
+      resultEl.innerHTML = `<span style="color:var(--red);">❌ ${escapeHtml(d.error || '分解失败')}</span>`;
+    }
+  } catch {
+    resultEl.innerHTML = '<span style="color:var(--red);">❌ 请求失败</span>';
+  }
+}
+
+async function loadKnownIntents() {
+  try {
+    const r = await fetch('/api/intents');
+    const d = await r.json();
+    if (d.ok && d.intents) {
+      const el = document.getElementById('known-intents');
+      if (d.intents.length === 0) {
+        el.innerHTML = '<span style="font-size:10px;color:var(--text-dim);">暂无已知操作语义</span>';
+        return;
+      }
+      el.innerHTML = d.intents.map(i => {
+        const src = i.source === 'learned' ? '📖' : '📦';
+        return `<button class="preset-btn" onclick="quickDecompose('${escapeHtml(i.intent)}')" title="${escapeHtml(i.summary)}">${src} ${escapeHtml(i.intent)}</button>`;
+      }).join('');
+    }
+  } catch {}
+}
+
+function quickDecompose(intent) {
+  document.getElementById('intent-input').value = intent;
+  decomposeIntent();
+}
+
+document.getElementById('intent-input').addEventListener('keydown', (e) => { if(e.key==='Enter') decomposeIntent(); });
+
+// 页面加载时获取已知意图
+loadKnownIntents();
+
+// ═══ LLM 提供者选择 ═══
+let currentSelectedLLM = 'mock';
+let currentActiveLLM = 'mock';
+
+function selectLLM(provider) {
+  currentSelectedLLM = provider;
+  document.querySelectorAll('#llm-options .mode-option').forEach(el => {
+    el.classList.toggle('active', el.dataset.llm === provider);
+  });
+  // mock 无需额外字段
+  document.getElementById('llm-extra-fields').style.display = (provider !== 'mock') ? 'block' : 'none';
+}
+
+async function applyLLMProvider() {
+  const btn = document.getElementById('llm-apply-btn');
+  const provider = currentSelectedLLM;
+  const model = document.getElementById('llm-model-input').value.trim();
+  const apiBase = document.getElementById('llm-api-base-input').value.trim();
+  btn.disabled = true;
+  btn.textContent = '⏳ 切换中...';
+  try {
+    const r = await fetch('/api/llm_provider', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({provider, model, api_base: apiBase})
+    });
+    const d = await r.json();
+    if (d.ok) {
+      currentActiveLLM = provider;
+      btn.textContent = '✅ 已应用';
+      setTimeout(() => { btn.disabled = false; btn.textContent = '✅ 应用 LLM'; }, 1500);
+    } else {
+      btn.textContent = '❌ ' + (d.error || '失败');
+      setTimeout(() => { btn.disabled = false; btn.textContent = '✅ 应用 LLM'; }, 2000);
+    }
+  } catch {
+    btn.disabled = false;
+    btn.textContent = '✅ 应用 LLM';
+  }
+}
+
+function updateLLMUI(s) {
+  const provider = s.llm_provider || 'mock';
+  if (provider !== currentActiveLLM) {
+    currentActiveLLM = provider;
+    currentSelectedLLM = provider;
+    selectLLM(provider);
+  }
+  if (s.llm_model) {
+    document.getElementById('llm-model-input').placeholder = s.llm_model || '模型名称（可选）';
+  }
+  if (s.llm_api_base) {
+    document.getElementById('llm-api-base-input').placeholder = s.llm_api_base || 'API 地址（可选）';
+  }
+}
 
 // 初始加载日志
 (async () => {

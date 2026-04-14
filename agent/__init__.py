@@ -9,6 +9,7 @@ agent — 智能体核心模块
   planner       Planner — 优先级识别、技能选择、计划生成
   reflection    QuickReflection / LongReflection — 局部偏差检测 + 整局复盘
   skill_builder SkillBuilder — 从经验中自动发明可复用技能
+  intent_understanding IntentUnderstanding — 自然语言意图分解 + 操作语义存储
   evolution     EvolutionOperator — 遗传算法多版本配置优化
 """
 
@@ -16,6 +17,7 @@ from agent.core import AgentCore, AgentState, AgentDecision
 from agent.planner import Planner, Plan
 from agent.reflection import QuickReflection, LongReflection, ReflectionResult
 from agent.skill_builder import SkillBuilder
+from agent.intent_understanding import IntentUnderstanding, IntentDecomposition, StructuredPrecondition, TaskExecutionPlan
 from agent.evolution import EvolutionOperator, CandidateConfig
 
 __all__ = [
@@ -28,6 +30,10 @@ __all__ = [
     'LongReflection',
     'ReflectionResult',
     'SkillBuilder',
+    'IntentUnderstanding',
+    'IntentDecomposition',
+    'StructuredPrecondition',
+    'TaskExecutionPlan',
     'EvolutionOperator',
     'CandidateConfig'
 ]

@@ -167,6 +167,8 @@ class AgentCore:
         
         # ── 用户自定义任务 ──
         self.user_task: Optional[str] = None
+        # 意图分解结果（由外部 IntentUnderstanding 注入）
+        self.user_task_decomposition: Optional[Dict[str, Any]] = None
         
         # ── 失败跟踪（防止重复低效行为）──
         self.recent_failures: deque = deque(maxlen=self.MAX_RECENT_FAILURES)
@@ -397,6 +399,28 @@ class AgentCore:
                 "用户设定了明确任务目标，请在保证生存安全的前提下优先完成此任务。"
                 "如果当前存在生命威胁，仍应优先处理生存问题，之后继续推进用户任务。"
             )
+            # 注入分阶段执行计划
+            if self.user_task_decomposition:
+                plan = self.user_task_decomposition
+                phase = plan.get("phase", "ready")
+
+                if phase == "preparing":
+                    # 准备阶段：优先补齐缺失资源
+                    context["task_execution_plan"] = plan
+                    context["task_decomposition_instruction"] = (
+                        f"【当前阶段：准备】{plan.get('progress_hint', '')}\n"
+                        "前置条件尚未满足，请优先执行 prerequisite_actions "
+                        "中的动作来补齐缺失资源/工具。\n"
+                        "不要跳过准备阶段直接执行主任务！"
+                    )
+                else:
+                    # 就绪/执行阶段：开始主任务
+                    context["task_execution_plan"] = plan
+                    context["task_decomposition_instruction"] = (
+                        f"【当前阶段：执行】{plan.get('progress_hint', '')}\n"
+                        "所有前置条件已满足，请按照 main_task_actions "
+                        "中的步骤执行主任务。"
+                    )
         
         # 调用 LLM
         response = self.llm.generate_decision(system_prompt, context)

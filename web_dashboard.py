@@ -65,6 +65,11 @@ class DashboardState:
         self._training_mode: str = "llm"
         self._training_stats: Dict[str, Any] = {}
 
+        # LLM 提供者: local / openai / anthropic / mock
+        self._llm_provider: str = "mock"
+        self._llm_model: str = ""
+        self._llm_api_base: str = ""
+
         # SSE 客户端队列
         self._sse_queues: List[queue.Queue] = []
         self._sse_lock = threading.Lock()
@@ -106,6 +111,23 @@ class DashboardState:
             self._connected = connected
 
     # ── 训练模式 ──
+
+    # ── LLM 提供者 ──
+
+    def set_llm_provider(self, provider: str, model: str = "", api_base: str = ""):
+        with self._lock:
+            self._llm_provider = provider
+            self._llm_model = model
+            self._llm_api_base = api_base
+        self._push_sse_event("llm_provider", {"provider": provider, "model": model, "api_base": api_base})
+
+    def get_llm_provider(self) -> Dict[str, str]:
+        with self._lock:
+            return {
+                "provider": self._llm_provider,
+                "model": self._llm_model,
+                "api_base": self._llm_api_base,
+            }
 
     def set_training_mode(self, mode: str):
         with self._lock:
@@ -168,6 +190,9 @@ class DashboardState:
                 "uptime": int(time.time() - self._start_time),
                 "training_mode": self._training_mode,
                 "training_stats": dict(self._training_stats),
+                "llm_provider": self._llm_provider,
+                "llm_model": self._llm_model,
+                "llm_api_base": self._llm_api_base,
             }
 
     # ── SSE 推送 ──
@@ -229,6 +254,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "mode": self.dashboard.state.get_training_mode(),
                 "stats": self.dashboard.state._training_stats,
             })
+        elif path == "/api/llm_provider":
+            self._json_response(self.dashboard.state.get_llm_provider())
+        elif path == "/api/intents":
+            self._handle_get_intents()
         elif path == "/api/events":
             self._serve_sse()
         else:
@@ -252,6 +281,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._handle_shutdown()
         elif path == "/api/training_mode":
             self._handle_training_mode()
+        elif path == "/api/llm_provider":
+            self._handle_llm_provider()
+        elif path == "/api/intent_decompose":
+            self._handle_intent_decompose()
         elif path == "/api/manual_action":
             self._handle_manual_action()
         else:
@@ -321,6 +354,54 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._json_response({"ok": True, "mode": mode})
         else:
             self._json_response({"error": "training_mode_callback not set"}, 500)
+
+    def _handle_llm_provider(self):
+        body = self._read_json_body()
+        if body is None:
+            self._json_response({"error": "invalid_json"}, 400)
+            return
+        provider = body.get("provider", "").strip()
+        if provider not in ("local", "openai", "anthropic", "mock"):
+            self._json_response({"error": "invalid provider, must be local/openai/anthropic/mock"}, 400)
+            return
+        model = body.get("model", "").strip()
+        api_base = body.get("api_base", "").strip()
+        if self.dashboard and self.dashboard.llm_provider_callback:
+            try:
+                self.dashboard.llm_provider_callback(provider, model, api_base)
+                self._json_response({"ok": True, "provider": provider, "model": model, "api_base": api_base})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+        else:
+            self._json_response({"error": "llm_provider_callback not set"}, 500)
+
+    def _handle_get_intents(self):
+        if self.dashboard and self.dashboard.get_intents_callback:
+            try:
+                intents = self.dashboard.get_intents_callback()
+                self._json_response({"ok": True, "intents": intents})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+        else:
+            self._json_response({"ok": True, "intents": []})
+
+    def _handle_intent_decompose(self):
+        body = self._read_json_body()
+        if body is None:
+            self._json_response({"error": "invalid_json"}, 400)
+            return
+        intent = body.get("intent", "").strip()
+        if not intent:
+            self._json_response({"error": "intent is required"}, 400)
+            return
+        if self.dashboard and self.dashboard.intent_decompose_callback:
+            try:
+                result = self.dashboard.intent_decompose_callback(intent)
+                self._json_response({"ok": True, "decomposition": result})
+            except Exception as e:
+                self._json_response({"error": str(e)}, 500)
+        else:
+            self._json_response({"error": "intent_decompose_callback not set"}, 500)
 
     def _handle_manual_action(self):
         body = self._read_json_body()
@@ -429,6 +510,9 @@ class WebDashboard:
         self.new_episode_callback: Optional[Callable] = None
         self.training_mode_callback: Optional[Callable] = None
         self.manual_action_callback: Optional[Callable] = None
+        self.llm_provider_callback: Optional[Callable] = None
+        self.get_intents_callback: Optional[Callable] = None
+        self.intent_decompose_callback: Optional[Callable] = None
         self._shutdown_flag = False
         self._server: Optional[ThreadedDashboardServer] = None
         self._thread: Optional[threading.Thread] = None
@@ -462,6 +546,18 @@ class WebDashboard:
     def set_manual_action_callback(self, callback: Callable):
         """设置手动动作回调"""
         self.manual_action_callback = callback
+
+    def set_llm_provider_callback(self, callback: Callable):
+        """设置 LLM 提供者切换回调"""
+        self.llm_provider_callback = callback
+
+    def set_get_intents_callback(self, callback: Callable):
+        """设置获取已知意图列表回调"""
+        self.get_intents_callback = callback
+
+    def set_intent_decompose_callback(self, callback: Callable):
+        """设置意图分解回调"""
+        self.intent_decompose_callback = callback
 
     def start(self):
         """启动 Web 服务器"""
